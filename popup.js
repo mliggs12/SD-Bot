@@ -34,7 +34,7 @@ async function main() {
     
     // Use the first MAX tab found (since MAX window is always open)
     const maxTab = maxTabs[0];
-    
+
     resultDiv.innerHTML = `
       <div style="color: green;">✓ Found MAX window</div>
       <div style="font-size: 11px;">Title: ${maxTab.title}</div>
@@ -59,9 +59,11 @@ async function main() {
       `;
       resultDiv.className = 'success';
       
+      // Open New Incident tab
+      await chrome.tabs.create({ url: 'https://support.houseloan.com/a/tickets/new'});
       // Open search in new tab
       const searchUrl = `https://support.houseloan.com/search/all?term=${callingNumber}`;
-      const newTab = await chrome.tabs.create({
+      await chrome.tabs.create({
         url: searchUrl,
         active: true
       });
