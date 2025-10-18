@@ -9,12 +9,14 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "tabs"
+    "tabs",
+    "storage"
   ],
   "action": {
     "default_popup": "popup.html"
   },
   "host_permissions": [
-    "https://max.niceincontact.com/*"
+    "https://max.niceincontact.com/*",
+    "https://support.houseloan.com/*"
   ]
 }
