@@ -1,2 +1,6 @@
+# Documentation
 notes.md
-TODO.md
+
+.vscode
+dist
+node_modules
