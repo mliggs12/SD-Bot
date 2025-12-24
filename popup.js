@@ -59,6 +59,12 @@ async function main() {
       `;
       resultDiv.className = 'success';
       
+      // Open New Incident tab
+      await chrome.tabs.create({ 
+        url: 'https://support.houseloan.com/a/tickets/new',
+        active: false
+      });
+      
       // Open search in new tab and wait for it to load
       const searchUrl = `https://support.houseloan.com/search/all?term=${callingNumber}`;
       const searchTab = await chrome.tabs.create({
@@ -93,6 +99,7 @@ async function main() {
         target: { tabId: searchTab.id },
         func: scrapeSearchResults
       });
+      console.log(scrapeResults)
       
       const requesterData = scrapeResults[0].result;
       
@@ -124,12 +131,6 @@ async function main() {
         // Open requester page
         await chrome.tabs.create({ 
           url: `https://support.houseloan.com/users/${requesterData.userId}`,
-          active: false
-        });
-        
-        // Open New Incident tab
-        await chrome.tabs.create({ 
-          url: 'https://support.houseloan.com/a/tickets/new',
           active: false
         });
         
