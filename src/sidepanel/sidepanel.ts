@@ -124,11 +124,13 @@ function triggerWorkflow(): void {
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', () => {
+    init();
+    // Wait a tiny bit to ensure listener is fully registered before triggering
+    setTimeout(() => triggerWorkflow(), 100);
+  });
 } else {
   init();
+  // Wait a tiny bit to ensure listener is fully registered before triggering
+  setTimeout(() => triggerWorkflow(), 100);
 }
-
-// Auto-trigger workflow when sidepanel opens
-// This happens when user clicks the extension icon
-triggerWorkflow();

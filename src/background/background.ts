@@ -134,10 +134,14 @@ function sendWorkflowUpdate(message: string): void {
     message: message,
   };
   
-  // Send to all sidepanels (if multiple windows)
-  chrome.runtime.sendMessage(updateMessage).catch(() => {
-    // Ignore errors if no listeners
-  });
+  // Send to sidepanel - wrap in try-catch to handle cases where sidepanel isn't ready
+  try {
+    chrome.runtime.sendMessage(updateMessage).catch(() => {
+      // Silently ignore - sidepanel might not be ready yet
+    });
+  } catch (error) {
+    console.error('Error sending workflow update message:', error);
+  }
 }
 
 /**
@@ -149,9 +153,13 @@ function sendWorkflowComplete(requesterData: StoredRequester): void {
     requesterData: requesterData,
   };
   
-  chrome.runtime.sendMessage(completeMessage).catch(() => {
-    // Ignore errors if no listeners
-  });
+  try {
+    chrome.runtime.sendMessage(completeMessage).catch(() => {
+      // Silently ignore
+    });
+  } catch (error) {
+    console.error('Error sending workflow completion message:', error);
+  }
 }
 
 /**
@@ -164,8 +172,12 @@ function sendWorkflowError(error: string, details?: string): void {
     details: details,
   };
   
-  chrome.runtime.sendMessage(errorMessage).catch(() => {
-    // Ignore errors if no listeners
-  });
+  try {
+    chrome.runtime.sendMessage(errorMessage).catch(() => {
+      // Silently ignore
+    });
+  } catch (error) {
+    console.error('Error sending workflow error message:', error);
+  }
 }
 
