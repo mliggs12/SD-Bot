@@ -134,14 +134,13 @@ function sendWorkflowUpdate(message: string): void {
     message: message,
   };
   
-  // Send to sidepanel - wrap in try-catch to handle cases where sidepanel isn't ready
-  try {
-    chrome.runtime.sendMessage(updateMessage).catch(() => {
-      // Silently ignore - sidepanel might not be ready yet
-    });
-  } catch (error) {
-    console.error('Error sending workflow update message:', error);
-  }
+  // Send to sidepanel with callback to handle errors properly
+  chrome.runtime.sendMessage(updateMessage, (response) => {
+    if (chrome.runtime.lastError) {
+      // Sidepanel might not be ready - this is expected and OK
+      return;
+    }
+  });
 }
 
 /**
@@ -153,13 +152,12 @@ function sendWorkflowComplete(requesterData: StoredRequester): void {
     requesterData: requesterData,
   };
   
-  try {
-    chrome.runtime.sendMessage(completeMessage).catch(() => {
-      // Silently ignore
-    });
-  } catch (error) {
-    console.error('Error sending workflow completion message:', error);
-  }
+  chrome.runtime.sendMessage(completeMessage, (response) => {
+    if (chrome.runtime.lastError) {
+      // Sidepanel might not be ready - this is expected and OK
+      return;
+    }
+  });
 }
 
 /**
@@ -172,12 +170,11 @@ function sendWorkflowError(error: string, details?: string): void {
     details: details,
   };
   
-  try {
-    chrome.runtime.sendMessage(errorMessage).catch(() => {
-      // Silently ignore
-    });
-  } catch (error) {
-    console.error('Error sending workflow error message:', error);
-  }
+  chrome.runtime.sendMessage(errorMessage, (response) => {
+    if (chrome.runtime.lastError) {
+      // Sidepanel might not be ready - this is expected and OK
+      return;
+    }
+  });
 }
 
