@@ -35,7 +35,7 @@ export class TabManager {
     
     // Wait for the tab to finish loading
     await new Promise<void>((resolve, reject) => {
-      const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+      const listener = (tabId: number, changeInfo: { status?: string }) => {
         if (tabId === tab.id && changeInfo.status === 'complete') {
           chrome.tabs.onUpdated.removeListener(listener);
           resolve();
