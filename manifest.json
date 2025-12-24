@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "SD Bot",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "Bot for automating various service desk functions",
   "icons": {
-    "128": "images/icon-128.png"
+    "128": "dist/images/icon-128.png"
   },
   "permissions": [
     "activeTab",
@@ -15,10 +15,10 @@
   ],
   "action": {},
   "background": {
-    "service_worker": "src/background.ts"
+    "service_worker": "dist/background.ts"
   },
   "side_panel": {
-    "default_path": "src/sidepanel.html"
+    "default_path": "dist/sidepanel/sidepanel.html"
   },
   "host_permissions": [
     "https://max.niceincontact.com/*",

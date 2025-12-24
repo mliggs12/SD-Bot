@@ -7,6 +7,7 @@ const config: webpack.Configuration = {
         background: './src/background.ts',
         content: './src/content.ts',
         popup: './src/popup.ts',
+        sidepanel: './src/sidepanel/sidepanel.ts',
     },
     resolve: {
         extensions: [".ts"],
@@ -27,7 +28,11 @@ const config: webpack.Configuration = {
     },
     plugins: [
         new CopyWebpackPlugin({
-            patterns: [{from: 'static'}],
+            patterns: [
+                {from: 'static'},
+                {from: 'src/sidepanel/sidepanel.html', to: 'sidepanel/sidepanel.html'},
+                {from: 'src/images', to: 'images'},
+            ],
         }),
     ]
 }
