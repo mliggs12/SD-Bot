@@ -10,11 +10,10 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "webpack": "^5.102.1",
-    "webpack-cli": "^6.0.1",
-    "webpack-merge": "^6.0.1"
+    "webpack-cli": "^6.0.1"
   },
   "scripts": {
-    "build": "webpack --config webpack.prod.ts",
-    "start": "webpack --watch --config webpack.dev.ts"
+    "build": "webpack --config webpack.config.ts --mode=production",
+    "start": "webpack --watch --config webpack.config.ts --mode=development"
   }
 }
