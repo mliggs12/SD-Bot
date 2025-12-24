@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "SD Bot",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Bot for automating various service desk functions",
   "icons": {
-    "128": "dist/images/icon-128.png"
+    "128": "images/icon-128.png"
   },
   "permissions": [
     "sidePanel",
@@ -13,20 +13,20 @@
   ],
   "action": {},
   "background": {
-    "service_worker": "dist/background.js"
+    "service_worker": "background.js"
   },
   "side_panel": {
-    "default_path": "dist/sidepanel/sidepanel.html"
+    "default_path": "sidepanel/sidepanel.html"
   },
   "content_scripts": [
     {
       "matches": ["https://max.niceincontact.com/*"],
-      "js": ["dist/content/ringcentral.js"],
+      "js": ["content/ringcentral.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://support.houseloan.com/*"],
-      "js": ["dist/content/freshservice.js"],
+      "js": ["content/freshservice.js"],
       "run_at": "document_idle"
     }
   ],

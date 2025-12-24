@@ -35,10 +35,14 @@ const config = (env: unknown, argv: { mode?: string }): webpack.Configuration =>
       path: path.resolve(__dirname, 'dist'),
       clean: true,
     },
+    optimization: {
+      minimize: isProduction,
+    },
     
     plugins: [
       new CopyWebpackPlugin({
         patterns: [
+          { from: 'manifest.json', to: 'manifest.json' },
           { from: 'src/sidepanel/sidepanel.html', to: 'sidepanel/sidepanel.html' },
           { from: 'src/images', to: 'images' },
         ],
