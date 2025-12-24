@@ -5,7 +5,6 @@ import {
   WorkflowCompleteMessage,
   WorkflowErrorMessage 
 } from '../types';
-import { MessageService } from '../services/message-service';
 
 // UI elements
 const resultDiv = document.getElementById('result');
@@ -105,29 +104,22 @@ function handleWorkflowError(message: WorkflowErrorMessage): void {
  * Trigger workflow when sidepanel opens
  * This will be called when user clicks extension icon
  */
-async function triggerWorkflow(): Promise<void> {
+function triggerWorkflow(): void {
   if (!resultDiv) return;
   
-  try {
-    resultDiv.textContent = 'Starting workflow...';
-    
-    const message: TriggerWorkflowMessage = {
-      type: 'TRIGGER_WORKFLOW',
-    };
-    
-    await MessageService.sendToBackground(message);
-  } catch (error) {
-    if (resultDiv) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      resultDiv.innerHTML = `
-        <div class="error">X Failed to trigger workflow</div>
-        <div style="font-size: 11px; margin-top: 5px; color: #666;">
-          Error: ${errorMessage}
-        </div>
-      `;
-      resultDiv.className = 'error';
-    }
-  }
+  resultDiv.textContent = 'Starting workflow...';
+  
+  const message: TriggerWorkflowMessage = {
+    type: 'TRIGGER_WORKFLOW',
+  };
+  
+  // Don't await - fire and forget, listen for updates via onMessage
+  // The background script handles the workflow asynchronously and sends
+  // updates via chrome.runtime.sendMessage() which we listen for in handleMessage()
+  chrome.runtime.sendMessage(message).catch(() => {
+    // Ignore errors - workflow will send updates via onMessage if it starts
+    // If there's an error, the background script will send a WORKFLOW_ERROR message
+  });
 }
 
 // Initialize when DOM is ready
