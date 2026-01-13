@@ -4,7 +4,7 @@
   "version": "1.5.1",
   "description": "Bot for automating various service desk functions",
   "icons": {
-    "128": "images/icon-128.png"
+    "128": "dist/images/icon-128.png"
   },
   "permissions": [
     "sidePanel",
