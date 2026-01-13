@@ -70,14 +70,9 @@ function handleWorkflowComplete(message: WorkflowCompleteMessage): void {
   if (requesterNameSpan) requesterNameSpan.textContent = requesterName;
   if (phoneNumberSpan) phoneNumberSpan.textContent = phoneNumber;
   
-  // Update result div
+  // Update result div with simple success message
   resultDiv.innerHTML = `
     <div class="success">✓ Requester Found</div>
-    <div style="margin-top: 8px;">
-      <strong>${requesterName}</strong><br>
-      Phone: ${phoneNumber}<br>
-      User ID: ${requesterUserId}
-    </div>
     <div style="font-size: 12px; color: #666; margin-top: 8px;">
       ✓ All tabs opened
     </div>
