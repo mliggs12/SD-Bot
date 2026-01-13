@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SD Bot",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Bot for automating various service desk functions",
   "icons": {
     "128": "dist/images/icon-128.png"

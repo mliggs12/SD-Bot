@@ -39,3 +39,6 @@ export const STORAGE_KEYS = {
   currentRequester: 'currentRequester',
 } as const;
 
+// Test mode configuration
+export const TEST_MODE = true; // Set to true to use static test number instead of extracting from RingCentral
+export const TEST_PHONE_NUMBER = '7207579434';

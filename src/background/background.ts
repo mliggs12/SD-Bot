@@ -1,3 +1,5 @@
+/// <reference types="chrome" />
+
 import { 
   Message, 
   TriggerWorkflowMessage, 
@@ -15,7 +17,9 @@ import {
   RINGCENTRAL_PATTERN, 
   FRESHSERVICE_SEARCH_URL, 
   FRESHSERVICE_NEW_TICKET_URL,
-  FRESHSERVICE_USER_PROFILE_URL 
+  FRESHSERVICE_USER_PROFILE_URL,
+  TEST_MODE,
+  TEST_PHONE_NUMBER
 } from '../utils/config';
 import { formatErrorWithStack } from '../utils/error-handler';
 
@@ -53,8 +57,18 @@ chrome.runtime.onMessage.addListener((
  */
 async function handleWorkflow(): Promise<void> {
   try {
-    const maxTab = await findRingCentralTab();
-    const phoneNumber = await extractCallingNumber(maxTab.id!);
+    let phoneNumber: string;
+    
+    if (TEST_MODE) {
+      // Test mode: use static phone number, skip RingCentral steps
+      phoneNumber = TEST_PHONE_NUMBER;
+      sendWorkflowUpdate(`Test Mode: Using static number ${phoneNumber}. Searching FreshService...`);
+    } else {
+      // Normal mode: find RingCentral tab and extract calling number
+      const maxTab = await findRingCentralTab();
+      phoneNumber = await extractCallingNumber(maxTab.id!);
+    }
+    
     const searchTab = await searchFreshService(phoneNumber);
     const requesterData = await processSearchResults(searchTab.id!, phoneNumber);
     await openRequesterTabs(requesterData);
