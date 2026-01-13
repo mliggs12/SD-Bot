@@ -1,36 +1,25 @@
-import { Message, SearchResultsResultMessage } from '../types';
+import { ScrapeSearchResultsMessage, SearchResultsResultMessage } from '../types';
 import { scrapeSearchResults } from '../scrapers/freshservice-scraper';
+import { createContentMessageHandler } from '../utils/content-message-handler';
 
 // Listen for messages from background script
-chrome.runtime.onMessage.addListener((
-  message: Message,
-  sender,
-  sendResponse: (response: SearchResultsResultMessage) => void
-) => {
-  if (message.type === 'SCRAPE_SEARCH_RESULTS') {
-    try {
+chrome.runtime.onMessage.addListener(
+  createContentMessageHandler<ScrapeSearchResultsMessage, SearchResultsResultMessage>(
+    'SCRAPE_SEARCH_RESULTS',
+    () => {
       const result = scrapeSearchResults();
-      
-      const response: SearchResultsResultMessage = {
+      return {
         type: 'SEARCH_RESULTS_RESULT',
         success: result.found,
         data: result,
         error: result.found ? undefined : result.reason,
       };
-      
-      sendResponse(response);
-      return true; // Indicates we will send a response asynchronously
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      sendResponse({
-        type: 'SEARCH_RESULTS_RESULT',
-        success: false,
-        error: errorMessage,
-      });
-      return true;
-    }
-  }
-  
-  return false;
-});
+    },
+    (errorMessage) => ({
+      type: 'SEARCH_RESULTS_RESULT',
+      success: false,
+      error: errorMessage,
+    })
+  )
+);
 

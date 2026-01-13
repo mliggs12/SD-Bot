@@ -4,7 +4,9 @@ import {
   WorkflowUpdateMessage, 
   WorkflowCompleteMessage, 
   WorkflowErrorMessage,
-  StoredRequester 
+  StoredRequester,
+  CallingNumberResultMessage,
+  SearchResultsResultMessage
 } from '../types';
 import { TabManager } from '../services/tab-manager';
 import { StorageService } from '../services/storage-service';
@@ -15,6 +17,7 @@ import {
   FRESHSERVICE_NEW_TICKET_URL,
   FRESHSERVICE_USER_PROFILE_URL 
 } from '../utils/config';
+import { formatErrorWithStack } from '../utils/error-handler';
 
 // Handle action button click to open side panel
 chrome.action.onClicked.addListener(async (tab) => {
@@ -50,78 +53,112 @@ chrome.runtime.onMessage.addListener((
  */
 async function handleWorkflow(): Promise<void> {
   try {
-    // Step 1: Find RingCentral MAX tab
-    sendWorkflowUpdate('Searching for MAX window...');
-    const maxTab = await TabManager.findTabByUrl(RINGCENTRAL_PATTERN);
-    
-    sendWorkflowUpdate('Found MAX window. Checking for call data...');
-    
-    // Step 2: Get calling number from RingCentral content script
-    const callingNumberResult = await MessageService.getCallingNumber(maxTab.id!);
-    
-    if (!callingNumberResult.success || !callingNumberResult.phoneNumber) {
-      sendWorkflowError(
-        'No customer number found',
-        callingNumberResult.error || 'No active call detected or calling number not available'
-      );
-      return;
-    }
-    
-    const phoneNumber = callingNumberResult.phoneNumber;
-    sendWorkflowUpdate(`Phone number found: ${phoneNumber}. Searching FreshService...`);
-    
-    // Step 3: Create FreshService search tab
-    const searchUrl = `${FRESHSERVICE_SEARCH_URL}?term=${phoneNumber}`;
-    const searchTab = await TabManager.createTabAndWait(searchUrl, true);
-    
-    sendWorkflowUpdate('Searching for requester...');
-    
-    // Step 4: Scrape search results
-    const searchResults = await MessageService.scrapeSearchResults(searchTab.id!);
-    
-    if (!searchResults.success || !searchResults.data?.found || searchResults.data.scenario !== 1) {
-      // Not scenario 1 - requester not found or multiple found
-      const reason = searchResults.data?.reason || searchResults.error || 'Unknown error';
-      const count = searchResults.data?.count;
-      
-      sendWorkflowError(
-        'Requester not uniquely identified',
-        `${reason}${count ? ` (Found ${count} requesters)` : ''}. Manual selection may be required.`
-      );
-      
-      // Still open new incident tab for manual work
-      await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
-      return;
-    }
-    
-    // Step 5: Store requester data
-    const requesterData: StoredRequester = {
-      requesterName: searchResults.data.name!,
-      requesterUserId: searchResults.data.userId!,
-      phoneNumber: phoneNumber,
-      timestamp: Date.now(),
-    };
-    
-    await StorageService.setCurrentRequester(requesterData);
-    
-    sendWorkflowUpdate('Requester found. Opening tabs...');
-    
-    // Step 6: Open additional tabs
-    await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
-    await TabManager.createTab(FRESHSERVICE_USER_PROFILE_URL(requesterData.requesterUserId), false);
-    
-    // Step 7: Notify sidepanel of completion
+    const maxTab = await findRingCentralTab();
+    const phoneNumber = await extractCallingNumber(maxTab.id!);
+    const searchTab = await searchFreshService(phoneNumber);
+    const requesterData = await processSearchResults(searchTab.id!, phoneNumber);
+    await openRequesterTabs(requesterData);
     sendWorkflowComplete(requesterData);
-    
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack?.split('\n')[0] : undefined;
-    
-    sendWorkflowError(
-      'Extension Error',
-      `${errorMessage}${errorStack ? `\nStack: ${errorStack}` : ''}`
+    const errorMessage = formatErrorWithStack(error, true);
+    sendWorkflowError('Extension Error', errorMessage);
+  }
+}
+
+/**
+ * Step 1: Find RingCentral MAX tab
+ * @returns The RingCentral MAX tab
+ * @throws Error if tab is not found
+ */
+async function findRingCentralTab(): Promise<chrome.tabs.Tab> {
+  sendWorkflowUpdate('Searching for MAX window...');
+  const maxTab = await TabManager.findTabByUrl(RINGCENTRAL_PATTERN);
+  sendWorkflowUpdate('Found MAX window. Checking for call data...');
+  return maxTab;
+}
+
+/**
+ * Step 2: Extract calling number from RingCentral content script
+ * @param tabId - The tab ID of the RingCentral MAX tab
+ * @returns The extracted phone number
+ * @throws Error if calling number cannot be extracted
+ */
+async function extractCallingNumber(tabId: number): Promise<string> {
+  const callingNumberResult = await MessageService.getCallingNumber(tabId);
+  
+  if (!callingNumberResult.success || !callingNumberResult.phoneNumber) {
+    throw new Error(
+      callingNumberResult.error || 'No active call detected or calling number not available'
     );
   }
+  
+  const phoneNumber = callingNumberResult.phoneNumber;
+  sendWorkflowUpdate(`Phone number found: ${phoneNumber}. Searching FreshService...`);
+  return phoneNumber;
+}
+
+/**
+ * Step 3: Create FreshService search tab and wait for it to load
+ * @param phoneNumber - The phone number to search for
+ * @returns The created search tab
+ * @throws Error if tab creation fails
+ */
+async function searchFreshService(phoneNumber: string): Promise<chrome.tabs.Tab> {
+  const searchUrl = `${FRESHSERVICE_SEARCH_URL}?term=${phoneNumber}`;
+  const searchTab = await TabManager.createTabAndWait(searchUrl, true);
+  sendWorkflowUpdate('Searching for requester...');
+  return searchTab;
+}
+
+/**
+ * Step 4: Process search results and store requester data
+ * @param searchTabId - The tab ID of the FreshService search results tab
+ * @param phoneNumber - The phone number that was searched
+ * @returns The stored requester data
+ * @throws Error if requester cannot be uniquely identified
+ */
+async function processSearchResults(
+  searchTabId: number,
+  phoneNumber: string
+): Promise<StoredRequester> {
+  const searchResults = await MessageService.scrapeSearchResults(searchTabId);
+  
+  if (!searchResults.success || !searchResults.data?.found || searchResults.data.scenario !== 1) {
+    // Not scenario 1 - requester not found or multiple found
+    const reason = searchResults.data?.reason || searchResults.error || 'Unknown error';
+    const count = searchResults.data?.count;
+    
+    sendWorkflowError(
+      'Requester not uniquely identified',
+      `${reason}${count ? ` (Found ${count} requesters)` : ''}. Manual selection may be required.`
+    );
+    
+    // Still open new incident tab for manual work
+    await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
+    throw new Error(`Requester not uniquely identified: ${reason}`);
+  }
+  
+  // Store requester data
+  const requesterData: StoredRequester = {
+    requesterName: searchResults.data.name!,
+    requesterUserId: searchResults.data.userId!,
+    phoneNumber: phoneNumber,
+    timestamp: Date.now(),
+  };
+  
+  await StorageService.setCurrentRequester(requesterData);
+  sendWorkflowUpdate('Requester found. Opening tabs...');
+  
+  return requesterData;
+}
+
+/**
+ * Step 5: Open tabs for requester (new ticket and user profile)
+ * @param requesterData - The requester data containing user ID
+ */
+async function openRequesterTabs(requesterData: StoredRequester): Promise<void> {
+  await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
+  await TabManager.createTab(FRESHSERVICE_USER_PROFILE_URL(requesterData.requesterUserId), false);
 }
 
 /**
