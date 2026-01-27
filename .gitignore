@@ -1,6 +1,9 @@
 # Documentation
 notes.md
 
+# Local settings
+.claude/settings.local.json
+
 .vscode
 dist
 node_modules
