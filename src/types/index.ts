@@ -122,3 +122,25 @@ export class TabError extends ExtensionError {
   }
 }
 
+// Type guard functions
+
+/**
+ * Type guard to check if CallingNumberResult is successful
+ * Narrows the type to ensure phoneNumber is defined
+ */
+export function isSuccessfulCallingNumberResult(
+  result: CallingNumberResult
+): result is CallingNumberResult & { success: true; phoneNumber: string } {
+  return result.success === true && !!result.phoneNumber;
+}
+
+/**
+ * Type guard to check if RequesterData represents a single successful match (scenario 1)
+ * Narrows the type to ensure name and userId are defined
+ */
+export function isSuccessfulSingleMatchResult(
+  result: RequesterData
+): result is RequesterData & { found: true; scenario: 1; name: string; userId: string } {
+  return result.found === true && result.scenario === 1 && !!result.name && !!result.userId;
+}
+

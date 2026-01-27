@@ -1,14 +1,16 @@
 /// <reference types="chrome" />
 
-import { 
-  Message, 
-  TriggerWorkflowMessage, 
-  WorkflowUpdateMessage, 
-  WorkflowCompleteMessage, 
+import {
+  Message,
+  TriggerWorkflowMessage,
+  WorkflowUpdateMessage,
+  WorkflowCompleteMessage,
   WorkflowErrorMessage,
   StoredRequester,
   CallingNumberResultMessage,
-  SearchResultsResultMessage
+  SearchResultsResultMessage,
+  isSuccessfulCallingNumberResult,
+  isSuccessfulSingleMatchResult
 } from '../types';
 import { TabManager } from '../services/tab-manager';
 import { StorageService } from '../services/storage-service';
@@ -99,13 +101,13 @@ async function findRingCentralTab(): Promise<chrome.tabs.Tab> {
  */
 async function extractCallingNumber(tabId: number): Promise<string> {
   const callingNumberResult = await MessageService.getCallingNumber(tabId);
-  
-  if (!callingNumberResult.success || !callingNumberResult.phoneNumber) {
+
+  if (!isSuccessfulCallingNumberResult(callingNumberResult)) {
     throw new Error(
       callingNumberResult.error || 'No active call detected or calling number not available'
     );
   }
-  
+
   const phoneNumber = callingNumberResult.phoneNumber;
   sendWorkflowUpdate(`Phone number found: ${phoneNumber}. Searching FreshService...`);
   return phoneNumber;
@@ -136,26 +138,26 @@ async function processSearchResults(
   phoneNumber: string
 ): Promise<StoredRequester> {
   const searchResults = await MessageService.scrapeSearchResults(searchTabId);
-  
-  if (!searchResults.success || !searchResults.data?.found || searchResults.data.scenario !== 1) {
+
+  if (!searchResults.success || !searchResults.data || !isSuccessfulSingleMatchResult(searchResults.data)) {
     // Not scenario 1 - requester not found or multiple found
     const reason = searchResults.data?.reason || searchResults.error || 'Unknown error';
     const count = searchResults.data?.count;
-    
+
     sendWorkflowError(
       'Requester not uniquely identified',
       `${reason}${count ? ` (Found ${count} requesters)` : ''}. Manual selection may be required.`
     );
-    
+
     // Still open new incident tab for manual work
     await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
     throw new Error(`Requester not uniquely identified: ${reason}`);
   }
-  
-  // Store requester data
+
+  // Store requester data - TypeScript now knows data.name and data.userId are defined
   const requesterData: StoredRequester = {
-    requesterName: searchResults.data.name!,
-    requesterUserId: searchResults.data.userId!,
+    requesterName: searchResults.data.name,
+    requesterUserId: searchResults.data.userId,
     phoneNumber: phoneNumber,
     timestamp: Date.now(),
   };
@@ -179,18 +181,10 @@ async function openRequesterTabs(requesterData: StoredRequester): Promise<void> 
  * Send workflow update message to sidepanel
  */
 function sendWorkflowUpdate(message: string): void {
-  const updateMessage: WorkflowUpdateMessage = {
+  MessageService.sendToSidepanel<WorkflowUpdateMessage>({
     type: 'WORKFLOW_UPDATE',
     status: 'in_progress',
     message: message,
-  };
-  
-  // Send to sidepanel with callback to handle errors properly
-  chrome.runtime.sendMessage(updateMessage, (response) => {
-    if (chrome.runtime.lastError) {
-      // Sidepanel might not be ready - this is expected and OK
-      return;
-    }
   });
 }
 
@@ -198,16 +192,9 @@ function sendWorkflowUpdate(message: string): void {
  * Send workflow completion message to sidepanel
  */
 function sendWorkflowComplete(requesterData: StoredRequester): void {
-  const completeMessage: WorkflowCompleteMessage = {
+  MessageService.sendToSidepanel<WorkflowCompleteMessage>({
     type: 'WORKFLOW_COMPLETE',
     requesterData: requesterData,
-  };
-  
-  chrome.runtime.sendMessage(completeMessage, (response) => {
-    if (chrome.runtime.lastError) {
-      // Sidepanel might not be ready - this is expected and OK
-      return;
-    }
   });
 }
 
@@ -215,17 +202,10 @@ function sendWorkflowComplete(requesterData: StoredRequester): void {
  * Send workflow error message to sidepanel
  */
 function sendWorkflowError(error: string, details?: string): void {
-  const errorMessage: WorkflowErrorMessage = {
+  MessageService.sendToSidepanel<WorkflowErrorMessage>({
     type: 'WORKFLOW_ERROR',
     error: error,
     details: details,
-  };
-  
-  chrome.runtime.sendMessage(errorMessage, (response) => {
-    if (chrome.runtime.lastError) {
-      // Sidepanel might not be ready - this is expected and OK
-      return;
-    }
   });
 }
 

@@ -101,13 +101,13 @@ function handleWorkflowError(message: WorkflowErrorMessage): void {
  */
 function triggerWorkflow(): void {
   if (!resultDiv) return;
-  
+
   resultDiv.textContent = 'Starting workflow...';
-  
+
   const message: TriggerWorkflowMessage = {
     type: 'TRIGGER_WORKFLOW',
   };
-  
+
   // Don't await - fire and forget, listen for updates via onMessage
   // The background script handles the workflow asynchronously and sends
   // updates via chrome.runtime.sendMessage() which we listen for in handleMessage()
@@ -117,15 +117,19 @@ function triggerWorkflow(): void {
   });
 }
 
+/**
+ * Initialize sidepanel and trigger workflow
+ * Small delay ensures message listener is fully registered before workflow starts
+ */
+function initAndTrigger(): void {
+  const LISTENER_SETUP_DELAY = 100; // Wait for message listener to fully register
+  init();
+  setTimeout(() => triggerWorkflow(), LISTENER_SETUP_DELAY);
+}
+
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    init();
-    // Wait a tiny bit to ensure listener is fully registered before triggering
-    setTimeout(() => triggerWorkflow(), 100);
-  });
+  document.addEventListener('DOMContentLoaded', initAndTrigger);
 } else {
-  init();
-  // Wait a tiny bit to ensure listener is fully registered before triggering
-  setTimeout(() => triggerWorkflow(), 100);
+  initAndTrigger();
 }

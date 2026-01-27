@@ -1,5 +1,6 @@
 import { RequesterData } from '../types';
 import { FRESHSERVICE_SELECTORS } from '../utils/config';
+import { formatErrorWithStack } from '../utils/error-handler';
 
 /**
  * Scrapes search results page for requester information
@@ -94,11 +95,9 @@ export function scrapeSearchResults(): RequesterData {
     };
 
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack?.split('\n')[0] : undefined;
-    return { 
-      found: false, 
-      reason: `Error scraping search results: ${errorMessage}${errorStack ? ` (${errorStack})` : ''}` 
+    return {
+      found: false,
+      reason: `Error scraping search results: ${formatErrorWithStack(error, true)}`
     };
   }
 }

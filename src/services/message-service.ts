@@ -100,5 +100,30 @@ export class MessageService {
     };
     return this.sendToTab<SearchResultsResultMessage>(tabId, request);
   }
+
+  /**
+   * Send a message to the sidepanel (fire-and-forget)
+   * @param message - The message to send to the sidepanel
+   * @returns void - This method doesn't wait for a response
+   *
+   * Note: If the sidepanel is not ready, chrome.runtime.lastError will be set,
+   * but this is expected and handled gracefully.
+   *
+   * @example
+   * ```typescript
+   * MessageService.sendToSidepanel({
+   *   type: 'WORKFLOW_UPDATE',
+   *   status: 'Starting workflow...'
+   * });
+   * ```
+   */
+  static sendToSidepanel<T extends Message>(message: T): void {
+    chrome.runtime.sendMessage(message, () => {
+      if (chrome.runtime.lastError) {
+        // Sidepanel might not be ready - this is expected and OK
+        return;
+      }
+    });
+  }
 }
 

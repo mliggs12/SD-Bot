@@ -3,7 +3,7 @@
     "compilerOptions": {
      "sourceMap": true,
      "types": ["chrome"],
-     "lib": ["ES2015", "DOM"]
+     "lib": ["ES2015", "DOM", "DOM.Iterable"]
     }
 }
    

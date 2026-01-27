@@ -1,5 +1,6 @@
 import { CallingNumberResult } from '../types';
 import { RINGCENTRAL_SELECTORS } from '../utils/config';
+import { formatErrorWithStack } from '../utils/error-handler';
 
 /**
  * Extracts the calling number from RingCentral MAX page DOM
@@ -79,11 +80,9 @@ export function extractCallingNumber(): CallingNumberResult {
       error: `Calling number not found. ${context}. Page may not be fully loaded or call may not be active.` 
     };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack?.split('\n')[0] : undefined;
-    return { 
-      success: false, 
-      error: `Error extracting calling number: ${errorMessage}${errorStack ? ` (${errorStack})` : ''}` 
+    return {
+      success: false,
+      error: `Error extracting calling number: ${formatErrorWithStack(error, true)}`
     };
   }
 }
