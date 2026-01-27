@@ -25,7 +25,11 @@ export const FRESHSERVICE_SELECTORS = {
   sectionList: 'ul',
   sectionHeading: 'li.heading',
   requestersHeading: 'Requesters',
+  ticketsHeading: 'Tickets',
   requesterLink: 'a.search-title',
+  // For tickets section - user links within ticket items
+  ticketUserLink: 'a.user_name',
+  ticketItem: 'li:not(.heading)',
 } as const;
 
 // Timeout constants (in milliseconds)

@@ -10,7 +10,8 @@ import {
   CallingNumberResultMessage,
   SearchResultsResultMessage,
   isSuccessfulCallingNumberResult,
-  isSuccessfulSingleMatchResult
+  isSuccessfulSingleMatchResult,
+  isMultipleRequestersResult
 } from '../types';
 import { TabManager } from '../services/tab-manager';
 import { StorageService } from '../services/storage-service';
@@ -139,33 +140,50 @@ async function processSearchResults(
 ): Promise<StoredRequester> {
   const searchResults = await MessageService.scrapeSearchResults(searchTabId);
 
-  if (!searchResults.success || !searchResults.data || !isSuccessfulSingleMatchResult(searchResults.data)) {
-    // Not scenario 1 - requester not found or multiple found
-    const reason = searchResults.data?.reason || searchResults.error || 'Unknown error';
-    const count = searchResults.data?.count;
+  // Check for scenario 1: Single unique requester
+  if (searchResults.success && searchResults.data && isSuccessfulSingleMatchResult(searchResults.data)) {
+    // Store requester data - TypeScript now knows data.name and data.userId are defined
+    const requesterData: StoredRequester = {
+      requesterName: searchResults.data.name,
+      requesterUserId: searchResults.data.userId,
+      phoneNumber: phoneNumber,
+      timestamp: Date.now(),
+    };
 
-    sendWorkflowError(
-      'Requester not uniquely identified',
-      `${reason}${count ? ` (Found ${count} requesters)` : ''}. Manual selection may be required.`
-    );
+    await StorageService.setCurrentRequester(requesterData);
+    const source = searchResults.data.source === 'tickets' ? ' (from tickets)' : '';
+    sendWorkflowUpdate(`Requester found${source}. Opening tabs...`);
 
-    // Still open new incident tab for manual work
-    await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
-    throw new Error(`Requester not uniquely identified: ${reason}`);
+    return requesterData;
   }
 
-  // Store requester data - TypeScript now knows data.name and data.userId are defined
-  const requesterData: StoredRequester = {
-    requesterName: searchResults.data.name,
-    requesterUserId: searchResults.data.userId,
-    phoneNumber: phoneNumber,
-    timestamp: Date.now(),
-  };
-  
-  await StorageService.setCurrentRequester(requesterData);
-  sendWorkflowUpdate('Requester found. Opening tabs...');
-  
-  return requesterData;
+  // Check for scenario 2: Multiple requesters from tickets
+  if (searchResults.success && searchResults.data && isMultipleRequestersResult(searchResults.data)) {
+    const requesters = searchResults.data.requesters;
+    const requesterNames = requesters.map(r => r.name).join(', ');
+
+    sendWorkflowError(
+      'Multiple requesters found',
+      `Found ${requesters.length} requesters in tickets: ${requesterNames}. Manual selection required.`
+    );
+
+    // Open new incident tab for manual work
+    await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
+    throw new Error(`Multiple requesters found: ${requesterNames}`);
+  }
+
+  // Scenario 3: Not found or other error
+  const reason = searchResults.data?.reason || searchResults.error || 'Unknown error';
+  const count = searchResults.data?.count;
+
+  sendWorkflowError(
+    'Requester not uniquely identified',
+    `${reason}${count ? ` (Found ${count} requesters)` : ''}. Manual selection may be required.`
+  );
+
+  // Still open new incident tab for manual work
+  await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
+  throw new Error(`Requester not uniquely identified: ${reason}`);
 }
 
 /**

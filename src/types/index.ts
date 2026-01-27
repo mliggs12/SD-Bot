@@ -73,6 +73,11 @@ export interface CallingNumberResult {
   error?: string;
 }
 
+export interface RequesterInfo {
+  name: string;
+  userId: string;
+}
+
 export interface RequesterData {
   found: boolean;
   scenario?: number;
@@ -80,6 +85,8 @@ export interface RequesterData {
   userId?: string;
   reason?: string;
   count?: number;
+  requesters?: RequesterInfo[]; // For tickets scenario with multiple requesters
+  source?: 'requesters' | 'tickets'; // Track where the data came from
 }
 
 export interface ScrapeResult<T> {
@@ -142,5 +149,15 @@ export function isSuccessfulSingleMatchResult(
   result: RequesterData
 ): result is RequesterData & { found: true; scenario: 1; name: string; userId: string } {
   return result.found === true && result.scenario === 1 && !!result.name && !!result.userId;
+}
+
+/**
+ * Type guard to check if RequesterData represents multiple requesters from tickets (scenario 2)
+ * Narrows the type to ensure requesters array is defined
+ */
+export function isMultipleRequestersResult(
+  result: RequesterData
+): result is RequesterData & { found: true; scenario: 2; requesters: RequesterInfo[]; count: number } {
+  return result.found === true && result.scenario === 2 && !!result.requesters && result.requesters.length > 0;
 }
 
