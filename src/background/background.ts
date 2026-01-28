@@ -39,15 +39,11 @@ chrome.runtime.onMessage.addListener((
 ) => {
   if (message.type === 'TRIGGER_WORKFLOW') {
     // Handle workflow asynchronously
-    handleWorkflow()
-      .then(() => {
-        // Workflow completed successfully
-      })
-      .catch((error) => {
-        console.error('Workflow error:', error);
-        // Error already sent via message
-      });
-    
+    handleWorkflow().catch((error) => {
+      console.error('Workflow error:', error);
+      // Error already sent via message
+    });
+
     // Return true to indicate async response
     return true;
   }
@@ -202,7 +198,7 @@ function sendWorkflowUpdate(message: string): void {
   MessageService.sendToSidepanel<WorkflowUpdateMessage>({
     type: 'WORKFLOW_UPDATE',
     status: 'in_progress',
-    message: message,
+    message,
   });
 }
 
@@ -212,7 +208,7 @@ function sendWorkflowUpdate(message: string): void {
 function sendWorkflowComplete(requesterData: StoredRequester): void {
   MessageService.sendToSidepanel<WorkflowCompleteMessage>({
     type: 'WORKFLOW_COMPLETE',
-    requesterData: requesterData,
+    requesterData,
   });
 }
 
@@ -222,8 +218,8 @@ function sendWorkflowComplete(requesterData: StoredRequester): void {
 function sendWorkflowError(error: string, details?: string): void {
   MessageService.sendToSidepanel<WorkflowErrorMessage>({
     type: 'WORKFLOW_ERROR',
-    error: error,
-    details: details,
+    error,
+    details,
   });
 }
 

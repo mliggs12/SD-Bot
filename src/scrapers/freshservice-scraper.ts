@@ -81,9 +81,9 @@ export function scrapeSearchResults(): RequesterData {
       const requesterLinks = Array.from(requestersSection.querySelectorAll<HTMLAnchorElement>(FRESHSERVICE_SELECTORS.requesterLink));
 
       if (requesterLinks.length === 0) {
-        const allLinks = requestersSection.querySelectorAll('a');
         // No requesters in Requesters section, fall through to try Tickets section
         if (!ticketsSection) {
+          const allLinks = requestersSection.querySelectorAll('a');
           return {
             found: false,
             reason: `No requester links found in Requesters section. Found ${allLinks.length} total link(s) in section.`

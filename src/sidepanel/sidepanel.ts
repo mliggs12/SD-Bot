@@ -10,7 +10,6 @@ import {
 const resultDiv = document.getElementById('result');
 const requesterNameSpan = document.getElementById('requester-name');
 const phoneNumberSpan = document.getElementById('phone-number');
-const laptopSerialSpan = document.getElementById('laptop-serial');
 
 /**
  * Initialize the sidepanel
@@ -63,9 +62,9 @@ function handleWorkflowUpdate(message: WorkflowUpdateMessage): void {
  */
 function handleWorkflowComplete(message: WorkflowCompleteMessage): void {
   if (!resultDiv || !message.requesterData) return;
-  
-  const { requesterName, requesterUserId, phoneNumber } = message.requesterData;
-  
+
+  const { requesterName, phoneNumber } = message.requesterData;
+
   // Update UI elements
   if (requesterNameSpan) requesterNameSpan.textContent = requesterName;
   if (phoneNumberSpan) phoneNumberSpan.textContent = phoneNumber;
