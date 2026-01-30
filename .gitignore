@@ -1,8 +1,7 @@
 # Documentation
 notes.md
 
-# Local settings
-.claude/settings.local.json
+.claude/*
 
 .vscode
 dist

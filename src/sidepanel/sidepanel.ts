@@ -51,7 +51,14 @@ function handleMessage(message: Message): void {
  */
 function handleWorkflowUpdate(message: WorkflowUpdateMessage): void {
   if (!resultDiv) return;
-  
+
+  // Extract and display phone number if present in message
+  // Matches both: "Phone number found: 1234567890." and "Test Mode: Using static number 1234567890."
+  const phoneMatch = message.message.match(/(?:Phone number found|Using static number): (\d+)\./);
+  if (phoneMatch && phoneNumberSpan) {
+    phoneNumberSpan.textContent = phoneMatch[1];
+  }
+
   resultDiv.innerHTML = `
     <div style="color: #666;">${message.message}</div>
   `;
@@ -63,21 +70,18 @@ function handleWorkflowUpdate(message: WorkflowUpdateMessage): void {
  */
 function handleWorkflowComplete(message: WorkflowCompleteMessage): void {
   if (!resultDiv || !message.requesterData) return;
-  
+
   const { requesterName, requesterUserId, phoneNumber } = message.requesterData;
-  
+
   // Update UI elements
   if (requesterNameSpan) requesterNameSpan.textContent = requesterName;
   if (phoneNumberSpan) phoneNumberSpan.textContent = phoneNumber;
-  
-  // Update result div with simple success message
-  resultDiv.innerHTML = `
-    <div class="success">✓ Requester Found</div>
-    <div style="font-size: 12px; color: #666; margin-top: 8px;">
-      ✓ All tabs opened
-    </div>
-  `;
-  resultDiv.className = 'success';
+
+  // Simple status message - requester info is already shown above
+  resultDiv.textContent = 'Workflow complete. All tabs opened.';
+  resultDiv.className = '';
+  resultDiv.style.color = '#28a745';
+  resultDiv.style.fontWeight = 'bold';
 }
 
 /**
