@@ -61,7 +61,7 @@ chrome.runtime.onMessage.addListener((
 async function handleWorkflow(): Promise<void> {
   try {
     let phoneNumber: string;
-    
+
     if (TEST_MODE) {
       // Test mode: use static phone number, skip RingCentral steps
       phoneNumber = TEST_PHONE_NUMBER;
@@ -71,10 +71,13 @@ async function handleWorkflow(): Promise<void> {
       const maxTab = await findRingCentralTab();
       phoneNumber = await extractCallingNumber(maxTab.id!);
     }
-    
+
+    // Always open new ticket tab first
+    await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
+
     const searchTab = await searchFreshService(phoneNumber);
     const requesterData = await processSearchResults(searchTab.id!, phoneNumber);
-    await openRequesterTabs(requesterData);
+    await openRequesterProfileTab(requesterData);
     sendWorkflowComplete(requesterData);
   } catch (error) {
     const errorMessage = formatErrorWithStack(error, true);
@@ -167,8 +170,6 @@ async function processSearchResults(
       `Found ${requesters.length} requesters in tickets: ${requesterNames}. Manual selection required.`
     );
 
-    // Open new incident tab for manual work
-    await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
     throw new Error(`Multiple requesters found: ${requesterNames}`);
   }
 
@@ -181,17 +182,14 @@ async function processSearchResults(
     `${reason}${count ? ` (Found ${count} requesters)` : ''}. Manual selection may be required.`
   );
 
-  // Still open new incident tab for manual work
-  await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
   throw new Error(`Requester not uniquely identified: ${reason}`);
 }
 
 /**
- * Step 5: Open tabs for requester (new ticket and user profile)
+ * Step 5: Open user profile tab for identified requester
  * @param requesterData - The requester data containing user ID
  */
-async function openRequesterTabs(requesterData: StoredRequester): Promise<void> {
-  await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
+async function openRequesterProfileTab(requesterData: StoredRequester): Promise<void> {
   await TabManager.createTab(FRESHSERVICE_USER_PROFILE_URL(requesterData.requesterUserId), false);
 }
 
