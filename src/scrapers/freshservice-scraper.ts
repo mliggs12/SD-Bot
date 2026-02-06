@@ -8,31 +8,26 @@ interface TicketExtractionResult {
 }
 
 /**
- * Extracts requester information from tickets section
- * Returns array of unique requesters found in tickets along with debug info
+ * Extracts requester information from a container element
+ * Looks for a.user_name links with /users/ hrefs
+ * Returns array of unique requesters found along with debug info
  */
-function extractRequestersFromTickets(ticketsSection: Element): TicketExtractionResult {
+function extractRequestersFromContainer(container: Element): TicketExtractionResult {
   const requesters = new Map<string, RequesterInfo>();
 
-  // Primary selector: a.user_name
-  let userLinks = ticketsSection.querySelectorAll<HTMLAnchorElement>(FRESHSERVICE_SELECTORS.ticketUserLink);
-  let selectorUsed: string = FRESHSERVICE_SELECTORS.ticketUserLink;
-
-  // Fallback: if primary selector finds nothing, try finding any link with /users/ in href
-  if (userLinks.length === 0) {
-    userLinks = ticketsSection.querySelectorAll<HTMLAnchorElement>('a[href*="/users/"]');
-    selectorUsed = 'a[href*="/users/"]';
-  }
+  // Find all user_name links with /users/ in href
+  const userLinks = container.querySelectorAll<HTMLAnchorElement>('a.user_name[href*="/users/"]');
 
   for (const userLink of userLinks) {
     const href = userLink.getAttribute('href');
     if (!href) continue;
 
-    // Extract user ID from href (e.g., /users/21004338789)
+    // Extract user ID from href (e.g., /users/21001347439)
     const userIdMatch = href.match(/\/users\/(\d+)/);
     if (!userIdMatch) continue;
 
     const userId = userIdMatch[1];
+    // Get text content - this will get the name from inner span if present
     const name = userLink.textContent?.trim() || '';
 
     if (name && userId && !requesters.has(userId)) {
@@ -40,10 +35,7 @@ function extractRequestersFromTickets(ticketsSection: Element): TicketExtraction
     }
   }
 
-  // Build debug info
-  const allLinks = ticketsSection.querySelectorAll('a');
-  const ticketItems = ticketsSection.querySelectorAll(FRESHSERVICE_SELECTORS.ticketItem);
-  const debugInfo = `Selector: "${selectorUsed}", found ${userLinks.length} user link(s), ${ticketItems.length} ticket item(s), ${allLinks.length} total link(s)`;
+  const debugInfo = `Found ${userLinks.length} user link(s) with a.user_name[href*="/users/"]`;
 
   return {
     requesters: Array.from(requesters.values()),
@@ -153,8 +145,9 @@ export function scrapeSearchResults(): RequesterData {
     }
 
     // Process Tickets section if Requesters section didn't yield results
+    // Search the entire searchResults container since ticket items may not be inside the ul
     if (ticketsSection) {
-      const { requesters: requestersFromTickets, debugInfo } = extractRequestersFromTickets(ticketsSection);
+      const { requesters: requestersFromTickets, debugInfo } = extractRequestersFromContainer(searchResults);
 
       if (requestersFromTickets.length === 0) {
         return {
