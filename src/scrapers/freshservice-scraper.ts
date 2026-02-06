@@ -2,15 +2,27 @@ import { RequesterData, RequesterInfo } from '../types';
 import { FRESHSERVICE_SELECTORS } from '../utils/config';
 import { formatErrorWithStack } from '../utils/error-handler';
 
+interface TicketExtractionResult {
+  requesters: RequesterInfo[];
+  debugInfo: string;
+}
+
 /**
  * Extracts requester information from tickets section
- * Returns array of unique requesters found in tickets
+ * Returns array of unique requesters found in tickets along with debug info
  */
-function extractRequestersFromTickets(ticketsSection: Element): RequesterInfo[] {
+function extractRequestersFromTickets(ticketsSection: Element): TicketExtractionResult {
   const requesters = new Map<string, RequesterInfo>();
 
-  // Find all user links within ticket items
-  const userLinks = ticketsSection.querySelectorAll<HTMLAnchorElement>(FRESHSERVICE_SELECTORS.ticketUserLink);
+  // Primary selector: a.user_name
+  let userLinks = ticketsSection.querySelectorAll<HTMLAnchorElement>(FRESHSERVICE_SELECTORS.ticketUserLink);
+  let selectorUsed: string = FRESHSERVICE_SELECTORS.ticketUserLink;
+
+  // Fallback: if primary selector finds nothing, try finding any link with /users/ in href
+  if (userLinks.length === 0) {
+    userLinks = ticketsSection.querySelectorAll<HTMLAnchorElement>('a[href*="/users/"]');
+    selectorUsed = 'a[href*="/users/"]';
+  }
 
   for (const userLink of userLinks) {
     const href = userLink.getAttribute('href');
@@ -28,7 +40,15 @@ function extractRequestersFromTickets(ticketsSection: Element): RequesterInfo[] 
     }
   }
 
-  return Array.from(requesters.values());
+  // Build debug info
+  const allLinks = ticketsSection.querySelectorAll('a');
+  const ticketItems = ticketsSection.querySelectorAll(FRESHSERVICE_SELECTORS.ticketItem);
+  const debugInfo = `Selector: "${selectorUsed}", found ${userLinks.length} user link(s), ${ticketItems.length} ticket item(s), ${allLinks.length} total link(s)`;
+
+  return {
+    requesters: Array.from(requesters.values()),
+    debugInfo
+  };
 }
 
 /**
@@ -60,9 +80,10 @@ export function scrapeSearchResults(): RequesterData {
       if (heading) {
         const headingText = heading.textContent?.trim() || '';
         sectionHeadings.push(headingText);
-        if (headingText === FRESHSERVICE_SELECTORS.requestersHeading) {
+        // Use startsWith to handle headings with counts like "Requesters (2)" or "Tickets (5)"
+        if (headingText.startsWith(FRESHSERVICE_SELECTORS.requestersHeading)) {
           requestersSection = section;
-        } else if (headingText === FRESHSERVICE_SELECTORS.ticketsHeading) {
+        } else if (headingText.startsWith(FRESHSERVICE_SELECTORS.ticketsHeading)) {
           ticketsSection = section;
         }
       }
@@ -133,18 +154,18 @@ export function scrapeSearchResults(): RequesterData {
 
     // Process Tickets section if Requesters section didn't yield results
     if (ticketsSection) {
-      const requestersFromTickets = extractRequestersFromTickets(ticketsSection);
+      const { requesters: requestersFromTickets, debugInfo } = extractRequestersFromTickets(ticketsSection);
 
       if (requestersFromTickets.length === 0) {
         return {
           found: false,
-          reason: 'No requester information found in Tickets section.',
+          reason: `No requester information found in Tickets section. ${debugInfo}`,
           source: 'tickets'
         };
       }
 
       if (requestersFromTickets.length === 1) {
-        // Scenario 1: Single unique requester from tickets
+        // Scenario 1: Single unique requester from tickets (all tickets have same requester)
         const requester = requestersFromTickets[0];
         return {
           found: true,

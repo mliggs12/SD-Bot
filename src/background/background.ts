@@ -146,16 +146,18 @@ async function processSearchResults(
   // Check for scenario 1: Single unique requester
   if (searchResults.success && searchResults.data && isSuccessfulSingleMatchResult(searchResults.data)) {
     // Store requester data - TypeScript now knows data.name and data.userId are defined
+    const source = searchResults.data.source;
     const requesterData: StoredRequester = {
       requesterName: searchResults.data.name,
       requesterUserId: searchResults.data.userId,
       phoneNumber: phoneNumber,
       timestamp: Date.now(),
+      source: source,
     };
 
     await StorageService.setCurrentRequester(requesterData);
-    const source = searchResults.data.source === 'tickets' ? ' (from tickets)' : '';
-    sendWorkflowUpdate(`Requester found${source}. Opening tabs...`);
+    const sourceLabel = source === 'tickets' ? ' (from tickets)' : '';
+    sendWorkflowUpdate(`Requester found${sourceLabel}. Opening tabs...`);
 
     return requesterData;
   }

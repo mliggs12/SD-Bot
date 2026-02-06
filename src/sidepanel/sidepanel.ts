@@ -71,14 +71,15 @@ function handleWorkflowUpdate(message: WorkflowUpdateMessage): void {
 function handleWorkflowComplete(message: WorkflowCompleteMessage): void {
   if (!resultDiv || !message.requesterData) return;
 
-  const { requesterName, requesterUserId, phoneNumber } = message.requesterData;
+  const { requesterName, requesterUserId, phoneNumber, source } = message.requesterData;
 
   // Update UI elements
   if (requesterNameSpan) requesterNameSpan.textContent = requesterName;
   if (phoneNumberSpan) phoneNumberSpan.textContent = phoneNumber;
 
-  // Simple status message - requester info is already shown above
-  resultDiv.textContent = 'Workflow complete. All tabs opened.';
+  // Status message with source indicator
+  const sourceLabel = source === 'tickets' ? ' (matched from tickets)' : '';
+  resultDiv.textContent = `Workflow complete${sourceLabel}. All tabs opened.`;
   resultDiv.className = '';
   resultDiv.style.color = '#28a745';
   resultDiv.style.fontWeight = 'bold';

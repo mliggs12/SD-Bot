@@ -101,6 +101,7 @@ export interface StoredRequester {
   requesterUserId: string;
   phoneNumber: string;
   timestamp: number;
+  source?: 'requesters' | 'tickets'; // Where the requester was found
 }
 
 // Error types
