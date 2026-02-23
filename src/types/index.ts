@@ -1,10 +1,11 @@
 // Message types for Chrome extension messaging
-export type MessageType = 
+export type MessageType =
   | 'GET_CALLING_NUMBER'
   | 'CALLING_NUMBER_RESULT'
   | 'SCRAPE_SEARCH_RESULTS'
   | 'SEARCH_RESULTS_RESULT'
   | 'TRIGGER_WORKFLOW'
+  | 'PHONE_NUMBER_IDENTIFIED'
   | 'WORKFLOW_UPDATE'
   | 'WORKFLOW_COMPLETE'
   | 'WORKFLOW_ERROR';
@@ -39,6 +40,11 @@ export interface TriggerWorkflowMessage extends BaseMessage {
   type: 'TRIGGER_WORKFLOW';
 }
 
+export interface PhoneNumberIdentifiedMessage extends BaseMessage {
+  type: 'PHONE_NUMBER_IDENTIFIED';
+  phoneNumber: string;
+}
+
 export interface WorkflowUpdateMessage extends BaseMessage {
   type: 'WORKFLOW_UPDATE';
   status: string;
@@ -56,12 +62,13 @@ export interface WorkflowErrorMessage extends BaseMessage {
   details?: string;
 }
 
-export type Message = 
+export type Message =
   | GetCallingNumberMessage
   | CallingNumberResultMessage
   | ScrapeSearchResultsMessage
   | SearchResultsResultMessage
   | TriggerWorkflowMessage
+  | PhoneNumberIdentifiedMessage
   | WorkflowUpdateMessage
   | WorkflowCompleteMessage
   | WorkflowErrorMessage;
