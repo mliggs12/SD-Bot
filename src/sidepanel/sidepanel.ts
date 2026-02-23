@@ -1,9 +1,10 @@
-import { 
-  Message, 
+import {
+  Message,
   TriggerWorkflowMessage,
+  PhoneNumberIdentifiedMessage,
   WorkflowUpdateMessage,
   WorkflowCompleteMessage,
-  WorkflowErrorMessage 
+  WorkflowErrorMessage
 } from '../types';
 
 // UI elements
@@ -34,6 +35,9 @@ function init(): void {
  */
 function handleMessage(message: Message): void {
   switch (message.type) {
+    case 'PHONE_NUMBER_IDENTIFIED':
+      handlePhoneNumberIdentified(message);
+      break;
     case 'WORKFLOW_UPDATE':
       handleWorkflowUpdate(message);
       break;
@@ -47,17 +51,19 @@ function handleMessage(message: Message): void {
 }
 
 /**
+ * Handle phone number identified message
+ */
+function handlePhoneNumberIdentified(message: PhoneNumberIdentifiedMessage): void {
+  if (phoneNumberSpan) {
+    phoneNumberSpan.textContent = message.phoneNumber;
+  }
+}
+
+/**
  * Handle workflow update messages
  */
 function handleWorkflowUpdate(message: WorkflowUpdateMessage): void {
   if (!resultDiv) return;
-
-  // Extract and display phone number if present in message
-  // Matches both: "Phone number found: 1234567890." and "Test Mode: Using static number 1234567890."
-  const phoneMatch = message.message.match(/(?:Phone number found|Using static number): (\d+)\./);
-  if (phoneMatch && phoneNumberSpan) {
-    phoneNumberSpan.textContent = phoneMatch[1];
-  }
 
   resultDiv.innerHTML = `
     <div style="color: #666;">${message.message}</div>

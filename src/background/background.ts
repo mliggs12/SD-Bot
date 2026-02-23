@@ -3,6 +3,7 @@
 import {
   Message,
   TriggerWorkflowMessage,
+  PhoneNumberIdentifiedMessage,
   WorkflowUpdateMessage,
   WorkflowCompleteMessage,
   WorkflowErrorMessage,
@@ -65,6 +66,7 @@ async function handleWorkflow(): Promise<void> {
     if (TEST_MODE) {
       // Test mode: use static phone number, skip RingCentral steps
       phoneNumber = TEST_PHONE_NUMBER;
+      sendPhoneNumberIdentified(phoneNumber);
       sendWorkflowUpdate(`Test Mode: Using static number ${phoneNumber}. Searching FreshService...`);
     } else {
       // Normal mode: find RingCentral tab and extract calling number
@@ -113,6 +115,7 @@ async function extractCallingNumber(tabId: number): Promise<string> {
   }
 
   const phoneNumber = callingNumberResult.phoneNumber;
+  sendPhoneNumberIdentified(phoneNumber);
   sendWorkflowUpdate(`Phone number found: ${phoneNumber}. Searching FreshService...`);
   return phoneNumber;
 }
@@ -193,6 +196,16 @@ async function processSearchResults(
  */
 async function openRequesterProfileTab(requesterData: StoredRequester): Promise<void> {
   await TabManager.createTab(FRESHSERVICE_USER_PROFILE_URL(requesterData.requesterUserId), false);
+}
+
+/**
+ * Send phone number identified message to sidepanel
+ */
+function sendPhoneNumberIdentified(phoneNumber: string): void {
+  MessageService.sendToSidepanel<PhoneNumberIdentifiedMessage>({
+    type: 'PHONE_NUMBER_IDENTIFIED',
+    phoneNumber: phoneNumber,
+  });
 }
 
 /**
