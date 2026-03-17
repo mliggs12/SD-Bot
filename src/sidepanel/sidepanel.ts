@@ -28,6 +28,8 @@ function init(): void {
   // Display initial state
   resultDiv.textContent = 'Ready. Click extension icon to start workflow.';
   resultDiv.className = '';
+  if (phoneNumberSpan) phoneNumberSpan.textContent = '';
+  if (requesterNameSpan) requesterNameSpan.textContent = '';
 }
 
 /**

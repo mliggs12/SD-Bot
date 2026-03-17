@@ -72,6 +72,8 @@ async function handleWorkflow(): Promise<void> {
       // Normal mode: find RingCentral tab and extract calling number
       const maxTab = await findRingCentralTab();
       phoneNumber = await extractCallingNumber(maxTab.id!);
+      sendPhoneNumberIdentified(phoneNumber);
+      sendWorkflowUpdate(`Searching FreshService for ${phoneNumber}...`);
     }
 
     // Always open new ticket tab first
@@ -114,10 +116,7 @@ async function extractCallingNumber(tabId: number): Promise<string> {
     );
   }
 
-  const phoneNumber = callingNumberResult.phoneNumber;
-  sendPhoneNumberIdentified(phoneNumber);
-  sendWorkflowUpdate(`Phone number found: ${phoneNumber}. Searching FreshService...`);
-  return phoneNumber;
+  return callingNumberResult.phoneNumber;
 }
 
 /**

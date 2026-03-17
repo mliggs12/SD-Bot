@@ -1274,6 +1274,8 @@ const element =
 **Current Version**: 1.5.2
 
 **Recent Changes**:
+- Moved `sendPhoneNumberIdentified` to `handleWorkflow` as explicit first step; `extractCallingNumber` is now a pure extraction function
+- Reset requester-info spans in `init()` to prevent stale data on panel reopen
 - Refactored message sending to use centralized helper
 - Added type guards for improved type safety
 - Consolidated error handling across scrapers
