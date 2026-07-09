@@ -25,6 +25,7 @@ SD-Bot is a Chrome browser extension that automates service desk workflows by in
 - Extracting caller phone numbers from active calls
 - Searching for requesters in FreshService
 - Opening relevant tabs when a unique requester is found
+- Applying the Standard Ticket template to the new ticket and pre-filling the description with caller details
 - Providing real-time status updates via a side panel
 
 ### Technology Stack
@@ -90,7 +91,8 @@ sd-bot/
 │   │   └── ringcentral.ts          # RingCentral content script
 │   ├── scrapers/
 │   │   ├── freshservice-scraper.ts # FreshService DOM scraping
-│   │   └── ringcentral-scraper.ts  # RingCentral DOM scraping
+│   │   ├── ringcentral-scraper.ts  # RingCentral DOM scraping
+│   │   └── ticket-form-filler.ts   # New ticket template selection + description autofill
 │   ├── services/
 │   │   ├── message-service.ts      # Chrome messaging abstraction
 │   │   ├── storage-service.ts      # Chrome storage abstraction
@@ -103,6 +105,7 @@ sd-bot/
 │   ├── utils/
 │   │   ├── config.ts               # Configuration constants
 │   │   ├── content-message-handler.ts # Generic message handler
+│   │   ├── dom-utils.ts            # DOM polling waits + synthetic mouse events
 │   │   └── error-handler.ts        # Error formatting utilities
 │   └── images/
 │       └── icon-128.png            # Extension icon
@@ -119,7 +122,7 @@ sd-bot/
 #### Background Service Worker ([src/background/background.ts](src/background/background.ts))
 - **Main orchestrator** of extension workflow
 - Listens for extension icon clicks to open side panel
-- Manages 5-step workflow execution
+- Manages 6-step workflow execution
 - Coordinates communication between content scripts
 - Sends status updates to side panel
 - Handles errors and recovery
@@ -141,6 +144,13 @@ sd-bot/
   - Identifies requester section
   - Handles 3 scenarios: single match (success), no match, multiple matches
   - Returns structured RequesterData
+
+- **Ticket Form Filler** ([src/scrapers/ticket-form-filler.ts](src/scrapers/ticket-form-filler.ts)):
+  - Runs in the new ticket tab (Ember SPA — waits for elements via polling)
+  - Opens the "Select template" dropdown (ember-power-select) and chooses "Standard Ticket"
+  - Waits for the template to populate the Froala description editor
+  - Rewrites the description to keep only the TM Name / Ph# / Laptop# lines, filling in requester name and phone number
+  - Idempotent: skips template selection if the template content is already present
 
 #### Services
 - **TabManager** ([src/services/tab-manager.ts](src/services/tab-manager.ts)):
@@ -346,9 +356,11 @@ const phoneNumber = result.phoneNumber;
 
 ## Core Workflow
 
-### 5-Step Automation Workflow
+### 6-Step Automation Workflow
 
-The workflow executes when the user clicks the extension icon:
+The workflow executes when the user clicks the extension icon. The new ticket
+tab is opened right after the calling number is identified (before the search),
+and its tab ID is kept so the autofill step can message it later:
 
 **Step 1: Find RingCentral MAX Tab**
 ```typescript
@@ -406,10 +418,32 @@ async function processSearchResults(
 }
 ```
 
-**Step 5: Open Requester Tabs**
+**Step 5: Autofill New Ticket**
 ```typescript
-async function openRequesterTabs(requesterData: StoredRequester): Promise<void> {
-  await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
+// Runs even when the requester was NOT uniquely identified —
+// TM Name is simply left blank in that case
+const autofillError = await autofillNewTicket(
+  ticketTab.id!,
+  requesterData?.requesterName ?? '',
+  phoneNumber
+);
+```
+The background sends an `AUTOFILL_TICKET` message to the FreshService content
+script in the ticket tab (with retries while the content script loads). The
+content script applies the Standard Ticket template and rewrites the
+description to:
+
+```
+TM Name: <requester name>
+Ph#: <phone number>
+Laptop#:
+```
+
+Autofill failures are reported to the side panel but do not abort the workflow.
+
+**Step 6: Open Requester Profile Tab**
+```typescript
+async function openRequesterProfileTab(requesterData: StoredRequester): Promise<void> {
   await TabManager.createTab(
     FRESHSERVICE_USER_PROFILE_URL(requesterData.requesterUserId),
     false
@@ -440,7 +474,11 @@ User Click → Background Service Worker
                     ↓
          Store requester data in Chrome Storage
                     ↓
-         Open new ticket tab + user profile tab
+         Send AUTOFILL_TICKET message → FreshService Content Script (ticket tab)
+                    ↓                              ↓
+         Wait for response          Apply template, rewrite description
+                    ↓
+         Open user profile tab
                     ↓
          Send WORKFLOW_COMPLETE message → Side Panel
 ```
@@ -1271,9 +1309,14 @@ const element =
 
 ## Version History
 
-**Current Version**: 1.5.2
+**Current Version**: 1.6.0
 
 **Recent Changes**:
+- Added new ticket autofill: applies the "Standard Ticket" template on the new ticket tab and rewrites the description to TM Name / Ph# / Laptop# lines pre-filled with requester name and phone number (blank TM Name when no unique requester match)
+- Added `AUTOFILL_TICKET` / `AUTOFILL_TICKET_RESULT` message types and `MessageService.autofillTicket`
+- Added `src/scrapers/ticket-form-filler.ts` and `src/utils/dom-utils.ts` (DOM polling waits, synthetic mouse event sequences)
+- `createContentMessageHandler` now supports async handlers
+- Reference DOM captures of the new ticket form live in `dom-captures/`
 - Moved `sendPhoneNumberIdentified` to `handleWorkflow` as explicit first step; `extractCallingNumber` is now a pure extraction function
 - Reset requester-info spans in `init()` to prevent stale data on panel reopen
 - Refactored message sending to use centralized helper

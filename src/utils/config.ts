@@ -32,10 +32,45 @@ export const FRESHSERVICE_SELECTORS = {
   ticketItem: 'li:not(.heading)',
 } as const;
 
+// DOM selectors for the FreshService new ticket form
+// IDs on the form are Ember-generated (ember13, ember15, ...) and change between
+// page loads, so selectors rely on aria-labels and stable component classes
+export const FRESHSERVICE_TICKET_SELECTORS = {
+  templateTrigger: '.ember-power-select-trigger[aria-label="Select template"]',
+  templateSearchInput: 'input.ember-power-select-search-input',
+  templateOption: 'li.ember-power-select-option',
+  descriptionEditor: '.fr-element.fr-view[contenteditable="true"]',
+  // Froala's hidden cursor-position markers, stripped from kept template lines
+  editorMarker: 'span.fr-marker',
+} as const;
+
+// Ticket template configuration
+export const TICKET_TEMPLATE = {
+  name: 'Standard Ticket',
+  tmNameLabel: 'TM Name:',
+  phoneLabel: 'Ph#:',
+  laptopLabel: 'Laptop#:',
+  // Line labels to keep from the template, in output order; every other line is deleted
+  keepLabels: ['TM Name:', 'Ph#:', 'Laptop#:'],
+  // Text whose presence signals the template has populated the description editor
+  appliedMarker: 'TM Name:',
+} as const;
+
 // Timeout constants (in milliseconds)
 export const TIMEOUTS = {
   tabLoad: 10000, // 10 seconds for tab to load
   contentRender: 500, // 500ms additional delay for content rendering
+  ticketFormLoad: 15000, // new ticket form (Ember SPA) render wait
+  dropdownOpen: 3000, // first wait for options after opening the template dropdown
+  templateApply: 10000, // wait for template content to populate the editor
+  domPoll: 200, // polling interval for DOM waits
+} as const;
+
+// Retry configuration for messaging the new ticket tab
+// (its content script may not be injected yet while the tab is still loading)
+export const AUTOFILL_RETRY = {
+  attempts: 5,
+  delayMs: 1000,
 } as const;
 
 // Storage keys
