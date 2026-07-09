@@ -4,6 +4,8 @@ export type MessageType =
   | 'CALLING_NUMBER_RESULT'
   | 'SCRAPE_SEARCH_RESULTS'
   | 'SEARCH_RESULTS_RESULT'
+  | 'AUTOFILL_TICKET'
+  | 'AUTOFILL_TICKET_RESULT'
   | 'TRIGGER_WORKFLOW'
   | 'PHONE_NUMBER_IDENTIFIED'
   | 'WORKFLOW_UPDATE'
@@ -33,6 +35,20 @@ export interface SearchResultsResultMessage extends BaseMessage {
   type: 'SEARCH_RESULTS_RESULT';
   success: boolean;
   data?: RequesterData;
+  error?: string;
+}
+
+export interface AutofillTicketMessage extends BaseMessage {
+  type: 'AUTOFILL_TICKET';
+  /** Requester name for the TM Name line; empty string leaves it blank */
+  requesterName: string;
+  /** Caller phone number in raw format for the Ph# line */
+  phoneNumber: string;
+}
+
+export interface AutofillTicketResultMessage extends BaseMessage {
+  type: 'AUTOFILL_TICKET_RESULT';
+  success: boolean;
   error?: string;
 }
 
@@ -67,6 +83,8 @@ export type Message =
   | CallingNumberResultMessage
   | ScrapeSearchResultsMessage
   | SearchResultsResultMessage
+  | AutofillTicketMessage
+  | AutofillTicketResultMessage
   | TriggerWorkflowMessage
   | PhoneNumberIdentifiedMessage
   | WorkflowUpdateMessage
@@ -99,6 +117,11 @@ export interface RequesterData {
 export interface ScrapeResult<T> {
   success: boolean;
   data?: T;
+  error?: string;
+}
+
+export interface TicketAutofillResult {
+  success: boolean;
   error?: string;
 }
 

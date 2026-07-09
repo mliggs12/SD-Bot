@@ -10,6 +10,7 @@ import {
   StoredRequester,
   CallingNumberResultMessage,
   SearchResultsResultMessage,
+  AutofillTicketResultMessage,
   isSuccessfulCallingNumberResult,
   isSuccessfulSingleMatchResult,
   isMultipleRequestersResult
@@ -17,11 +18,12 @@ import {
 import { TabManager } from '../services/tab-manager';
 import { StorageService } from '../services/storage-service';
 import { MessageService } from '../services/message-service';
-import { 
-  RINGCENTRAL_PATTERN, 
-  FRESHSERVICE_SEARCH_URL, 
+import {
+  RINGCENTRAL_PATTERN,
+  FRESHSERVICE_SEARCH_URL,
   FRESHSERVICE_NEW_TICKET_URL,
   FRESHSERVICE_USER_PROFILE_URL,
+  AUTOFILL_RETRY,
   TEST_MODE,
   TEST_PHONE_NUMBER
 } from '../utils/config';
@@ -76,12 +78,41 @@ async function handleWorkflow(): Promise<void> {
       sendWorkflowUpdate(`Searching FreshService for ${phoneNumber}...`);
     }
 
-    // Always open new ticket tab first
-    await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
+    // Always open new ticket tab first; keep a handle on it for autofill
+    const ticketTab = await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
 
     const searchTab = await searchFreshService(phoneNumber);
-    const requesterData = await processSearchResults(searchTab.id!, phoneNumber);
+
+    // Identify the requester, but prep the new ticket even when identification fails
+    let requesterData: StoredRequester | undefined;
+    let searchError: unknown;
+    try {
+      requesterData = await processSearchResults(searchTab.id!, phoneNumber);
+    } catch (error) {
+      searchError = error;
+    }
+
+    // TM Name is left blank when no unique requester was found
+    const autofillError = await autofillNewTicket(
+      ticketTab.id!,
+      requesterData?.requesterName ?? '',
+      phoneNumber
+    );
+
+    if (searchError !== undefined || !requesterData) {
+      throw searchError;
+    }
+
     await openRequesterProfileTab(requesterData);
+
+    if (autofillError) {
+      sendWorkflowError(
+        'Ticket autofill failed',
+        `${autofillError} Fill the ticket description manually.`
+      );
+      return;
+    }
+
     sendWorkflowComplete(requesterData);
   } catch (error) {
     const errorMessage = formatErrorWithStack(error, true);
@@ -190,7 +221,56 @@ async function processSearchResults(
 }
 
 /**
- * Step 5: Open user profile tab for identified requester
+ * Step 5: Autofill the new ticket with the Standard Ticket template and caller details
+ * Failures are reported without aborting the workflow — the opened tabs are still useful
+ * @param ticketTabId - The tab ID of the new ticket tab opened at workflow start
+ * @param requesterName - Requester name ('' when not uniquely identified)
+ * @param phoneNumber - The caller's phone number
+ * @returns An error description on failure, or null on success
+ */
+async function autofillNewTicket(
+  ticketTabId: number,
+  requesterName: string,
+  phoneNumber: string
+): Promise<string | null> {
+  sendWorkflowUpdate('Prepping new ticket with Standard Ticket template...');
+  try {
+    const result = await sendAutofillWithRetry(ticketTabId, requesterName, phoneNumber);
+    if (!result.success) {
+      return result.error || 'Ticket autofill failed for an unknown reason.';
+    }
+    sendWorkflowUpdate('New ticket prepped with caller details.');
+    return null;
+  } catch (error) {
+    return formatErrorWithStack(error, true);
+  }
+}
+
+/**
+ * Sends the autofill message, retrying while the ticket tab's content script
+ * may still be loading (the tab was opened without waiting for it)
+ */
+async function sendAutofillWithRetry(
+  tabId: number,
+  requesterName: string,
+  phoneNumber: string
+): Promise<AutofillTicketResultMessage> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < AUTOFILL_RETRY.attempts; attempt++) {
+    if (attempt > 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, AUTOFILL_RETRY.delayMs));
+    }
+    try {
+      return await MessageService.autofillTicket(tabId, requesterName, phoneNumber);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+/**
+ * Step 6: Open user profile tab for identified requester
  * @param requesterData - The requester data containing user ID
  */
 async function openRequesterProfileTab(requesterData: StoredRequester): Promise<void> {

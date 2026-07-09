@@ -1,9 +1,11 @@
-import { 
-  Message, 
-  CallingNumberResultMessage, 
+import {
+  Message,
+  CallingNumberResultMessage,
   SearchResultsResultMessage,
   GetCallingNumberMessage,
-  ScrapeSearchResultsMessage
+  ScrapeSearchResultsMessage,
+  AutofillTicketMessage,
+  AutofillTicketResultMessage
 } from '../types';
 
 /**
@@ -99,6 +101,27 @@ export class MessageService {
       type: 'SCRAPE_SEARCH_RESULTS',
     };
     return this.sendToTab<SearchResultsResultMessage>(tabId, request);
+  }
+
+  /**
+   * Request new ticket autofill from the FreshService content script
+   * @param tabId - The ID of the tab containing the new ticket form
+   * @param requesterName - Requester name for the TM Name line ('' leaves it blank)
+   * @param phoneNumber - Caller phone number for the Ph# line
+   * @returns Promise that resolves with the autofill result
+   * @throws Error if the message cannot be sent or if no response is received
+   */
+  static async autofillTicket(
+    tabId: number,
+    requesterName: string,
+    phoneNumber: string
+  ): Promise<AutofillTicketResultMessage> {
+    const request: AutofillTicketMessage = {
+      type: 'AUTOFILL_TICKET',
+      requesterName,
+      phoneNumber,
+    };
+    return this.sendToTab<AutofillTicketResultMessage>(tabId, request);
   }
 
   /**
