@@ -8,8 +8,11 @@ export type MessageType =
   | 'AUTOFILL_TICKET_RESULT'
   | 'TRIGGER_WORKFLOW'
   | 'PHONE_NUMBER_IDENTIFIED'
+  | 'REQUESTER_SELECTION_REQUIRED'
+  | 'SELECT_REQUESTER'
   | 'WORKFLOW_UPDATE'
   | 'WORKFLOW_COMPLETE'
+  | 'WORKFLOW_NO_MATCH'
   | 'WORKFLOW_ERROR';
 
 export interface BaseMessage {
@@ -61,6 +64,18 @@ export interface PhoneNumberIdentifiedMessage extends BaseMessage {
   phoneNumber: string;
 }
 
+export interface RequesterSelectionRequiredMessage extends BaseMessage {
+  type: 'REQUESTER_SELECTION_REQUIRED';
+  requesters: RequesterInfo[];
+  phoneNumber: string;
+  source?: 'requesters' | 'tickets';
+}
+
+export interface SelectRequesterMessage extends BaseMessage {
+  type: 'SELECT_REQUESTER';
+  requester: RequesterInfo;
+}
+
 export interface WorkflowUpdateMessage extends BaseMessage {
   type: 'WORKFLOW_UPDATE';
   status: string;
@@ -70,6 +85,14 @@ export interface WorkflowUpdateMessage extends BaseMessage {
 export interface WorkflowCompleteMessage extends BaseMessage {
   type: 'WORKFLOW_COMPLETE';
   requesterData?: StoredRequester;
+}
+
+export interface WorkflowNoMatchMessage extends BaseMessage {
+  type: 'WORKFLOW_NO_MATCH';
+  phoneNumber: string;
+  reason?: string;
+  /** False when the new ticket could not be prepped with the phone number */
+  ticketPrepped: boolean;
 }
 
 export interface WorkflowErrorMessage extends BaseMessage {
@@ -87,8 +110,11 @@ export type Message =
   | AutofillTicketResultMessage
   | TriggerWorkflowMessage
   | PhoneNumberIdentifiedMessage
+  | RequesterSelectionRequiredMessage
+  | SelectRequesterMessage
   | WorkflowUpdateMessage
   | WorkflowCompleteMessage
+  | WorkflowNoMatchMessage
   | WorkflowErrorMessage;
 
 // Scraper result types
@@ -110,8 +136,11 @@ export interface RequesterData {
   userId?: string;
   reason?: string;
   count?: number;
-  requesters?: RequesterInfo[]; // For tickets scenario with multiple requesters
+  requesters?: RequesterInfo[]; // For scenarios with multiple requesters
   source?: 'requesters' | 'tickets'; // Track where the data came from
+  // True when the search page rendered but held no usable requester —
+  // a genuine "no match" rather than a scrape failure
+  noMatch?: boolean;
 }
 
 export interface ScrapeResult<T> {
@@ -132,6 +161,19 @@ export interface StoredRequester {
   phoneNumber: string;
   timestamp: number;
   source?: 'requesters' | 'tickets'; // Where the requester was found
+}
+
+/**
+ * Workflow context saved while waiting for the tech to pick a requester
+ * in the sidepanel. Persisted to chrome.storage.session because the MV3
+ * service worker may unload before the selection arrives.
+ */
+export interface PendingSelection {
+  phoneNumber: string;
+  ticketTabId: number;
+  requesters: RequesterInfo[];
+  source?: 'requesters' | 'tickets';
+  timestamp: number;
 }
 
 // Error types
@@ -183,12 +225,23 @@ export function isSuccessfulSingleMatchResult(
 }
 
 /**
- * Type guard to check if RequesterData represents multiple requesters from tickets (scenario 2)
+ * Type guard to check if RequesterData represents multiple requesters (scenario 2),
+ * whether they came from the Requesters section or from tickets
  * Narrows the type to ensure requesters array is defined
  */
 export function isMultipleRequestersResult(
   result: RequesterData
 ): result is RequesterData & { found: true; scenario: 2; requesters: RequesterInfo[]; count: number } {
   return result.found === true && result.scenario === 2 && !!result.requesters && result.requesters.length > 0;
+}
+
+/**
+ * Type guard to check if RequesterData represents a genuine "no match" (scenario 3):
+ * the search page rendered but no requester could be identified from it
+ */
+export function isNoMatchResult(
+  result: RequesterData
+): result is RequesterData & { found: false; noMatch: true } {
+  return result.found === false && result.noMatch === true;
 }
 

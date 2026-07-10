@@ -83,8 +83,10 @@ export function scrapeSearchResults(): RequesterData {
 
     // Try Requesters section first (existing logic)
     if (!requestersSection && !ticketsSection) {
+      // The results page rendered but has nothing usable — treat as no match
       return {
         found: false,
+        noMatch: true,
         reason: `No Requesters or Tickets section found. Found ${sections.length} section(s) with headings: ${sectionHeadings.length > 0 ? sectionHeadings.join(', ') : 'none'}`
       };
     }
@@ -99,15 +101,49 @@ export function scrapeSearchResults(): RequesterData {
         if (!ticketsSection) {
           return {
             found: false,
+            noMatch: true,
             reason: `No requester links found in Requesters section. Found ${allLinks.length} total link(s) in section.`
           };
         }
       } else if (requesterLinks.length > 1) {
-        const requesterNames = requesterLinks.map(link => link.textContent?.trim() || 'unnamed').slice(0, 5);
+        // Scenario 2: Multiple requesters in the Requesters section —
+        // return the structured list so the sidepanel can offer a picker
+        const requesters = new Map<string, RequesterInfo>();
+        for (const link of requesterLinks) {
+          const name = link.textContent?.trim() || '';
+          const userIdMatch = link.getAttribute('href')?.match(/\/users\/(\d+)/);
+          if (name && userIdMatch && !requesters.has(userIdMatch[1])) {
+            requesters.set(userIdMatch[1], { name, userId: userIdMatch[1] });
+          }
+        }
+        const uniqueRequesters = Array.from(requesters.values());
+
+        // Duplicate links can collapse to one real requester
+        if (uniqueRequesters.length === 1) {
+          return {
+            found: true,
+            scenario: 1,
+            name: uniqueRequesters[0].name,
+            userId: uniqueRequesters[0].userId,
+            source: 'requesters'
+          };
+        }
+
+        if (uniqueRequesters.length === 0) {
+          return {
+            found: false,
+            reason: `Found ${requesterLinks.length} requester link(s) but none had a parseable /users/{id} href.`,
+            source: 'requesters'
+          };
+        }
+
+        const requesterNames = uniqueRequesters.map(r => r.name).slice(0, 5);
         return {
-          found: false,
-          reason: `Multiple requesters found (${requesterLinks.length}): ${requesterNames.join(', ')}${requesterLinks.length > 5 ? '...' : ''}`,
-          count: requesterLinks.length,
+          found: true,
+          scenario: 2,
+          reason: `Multiple requesters found (${uniqueRequesters.length}): ${requesterNames.join(', ')}${uniqueRequesters.length > 5 ? '...' : ''}`,
+          count: uniqueRequesters.length,
+          requesters: uniqueRequesters,
           source: 'requesters'
         };
       } else {
@@ -152,6 +188,7 @@ export function scrapeSearchResults(): RequesterData {
       if (requestersFromTickets.length === 0) {
         return {
           found: false,
+          noMatch: true,
           reason: `No requester information found in Tickets section. ${debugInfo}`,
           source: 'tickets'
         };

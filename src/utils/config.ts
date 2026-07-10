@@ -83,7 +83,12 @@ export const CALLING_NUMBER_RETRY = {
 // Storage keys
 export const STORAGE_KEYS = {
   currentRequester: 'currentRequester',
+  pendingSelection: 'pendingSelection',
 } as const;
+
+// How long a pending requester selection stays valid; stale selections are
+// discarded so a click in an old sidepanel can't act on the wrong call
+export const PENDING_SELECTION_TTL_MS = 15 * 60 * 1000;
 
 // Test mode configuration
 // WARNING: TEST_MODE should be 'false' in production builds!

@@ -132,6 +132,10 @@ function createTemplateLine(label: string): HTMLParagraphElement {
 /**
  * Replaces the populated template content with only the keep-label lines,
  * appending the provided value after each label
+ *
+ * Idempotent: a line that already carries a value (from an earlier autofill
+ * pass, e.g. before a manual requester selection) is rebuilt fresh instead of
+ * reused, so re-running never duplicates values
  */
 function rewriteDescription(editor: HTMLElement, values: Readonly<Record<string, string>>): void {
   const paragraphs = Array.from(editor.querySelectorAll('p'));
@@ -139,10 +143,10 @@ function rewriteDescription(editor: HTMLElement, values: Readonly<Record<string,
 
   for (const label of TICKET_TEMPLATE.keepLabels) {
     // Reuse the template's own paragraph to preserve its styling; synthesize a
-    // matching line if the template text changed and the label is missing
+    // matching line if it already holds a value or the label is missing
+    const existing = paragraphs.find((p) => cleanText(p.textContent).startsWith(label));
     const paragraph =
-      paragraphs.find((p) => cleanText(p.textContent).startsWith(label)) ??
-      createTemplateLine(label);
+      existing && cleanText(existing.textContent) === label ? existing : createTemplateLine(label);
 
     for (const marker of paragraph.querySelectorAll(FRESHSERVICE_TICKET_SELECTORS.editorMarker)) {
       marker.remove();

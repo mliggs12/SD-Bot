@@ -141,8 +141,11 @@ sd-bot/
 
 - **FreshService Scraper** ([src/scrapers/freshservice-scraper.ts](src/scrapers/freshservice-scraper.ts)):
   - Parses search results page
-  - Identifies requester section
-  - Handles 3 scenarios: single match (success), no match, multiple matches
+  - Identifies Requesters and Tickets sections
+  - Handles 3 scenarios: single match (scenario 1), multiple matches with a
+    structured requester list for manual selection (scenario 2, from either
+    the Requesters section or ticket entries), and genuine no-match
+    (`noMatch: true`) distinguished from scrape failures
   - Returns structured RequesterData
 
 - **Ticket Form Filler** ([src/scrapers/ticket-form-filler.ts](src/scrapers/ticket-form-filler.ts)):
@@ -166,7 +169,10 @@ sd-bot/
 
 - **StorageService** ([src/services/storage-service.ts](src/services/storage-service.ts)):
   - Type-safe Chrome storage operations
-  - Stores current requester data
+  - Stores current requester data (chrome.storage.local)
+  - Stores the pending requester selection while a workflow waits for the
+    tech to pick from multiple matches (chrome.storage.session, so it
+    survives MV3 service worker restarts; entries expire after 15 minutes)
   - Get/set/clear operations
 
 #### Side Panel ([src/sidepanel/](src/sidepanel/))
@@ -174,6 +180,9 @@ sd-bot/
 - Displays requester information
 - Real-time updates during workflow execution
 - Auto-triggers workflow on panel open
+- Requester picker when the search matches multiple people: clicking a name
+  sends SELECT_REQUESTER to the background to finish the paused workflow
+- Warning (not error) state when the search legitimately finds no requester
 
 #### Utilities
 - **Config** ([src/utils/config.ts](src/utils/config.ts)): URL patterns, DOM selectors, timeouts, test mode
@@ -181,8 +190,8 @@ sd-bot/
 - **Error Handler** ([src/utils/error-handler.ts](src/utils/error-handler.ts)): Error formatting utilities
 
 #### Types ([src/types/index.ts](src/types/index.ts))
-- 12 message type definitions
-- Data structure interfaces (CallingNumberResult, RequesterData, StoredRequester)
+- 14 message type definitions
+- Data structure interfaces (CallingNumberResult, RequesterData, StoredRequester, PendingSelection)
 - Custom error classes (ExtensionError, ScraperError, TabError)
 - Type guard functions for runtime type checking
 
@@ -404,28 +413,33 @@ async function searchFreshService(phoneNumber: string): Promise<number> {
 
 **Step 4: Process Search Results**
 ```typescript
+type SearchOutcome =
+  | { kind: 'single'; requester: StoredRequester }
+  | { kind: 'multiple'; requesters: RequesterInfo[]; source?: 'requesters' | 'tickets' }
+  | { kind: 'none'; reason: string }
+  | { kind: 'error'; reason: string };
+
 async function processSearchResults(
   searchTabId: number,
   phoneNumber: string
-): Promise<StoredRequester> {
-  const searchResults = await MessageService.scrapeSearchResults(searchTabId);
-
-  if (!searchResults.success || !searchResults.data ||
-      !isSuccessfulSingleMatchResult(searchResults.data)) {
-    throw new Error('Requester not uniquely identified');
-  }
-
-  const requesterData: StoredRequester = {
-    requesterName: searchResults.data.name,
-    requesterUserId: searchResults.data.userId,
-    phoneNumber: phoneNumber,
-    timestamp: Date.now()
-  };
-
-  await StorageService.setCurrentRequester(requesterData);
-  return requesterData;
-}
+): Promise<SearchOutcome> { /* ... */ }
 ```
+
+The workflow branches on the outcome:
+
+- **single** — requester stored, ticket autofilled with their name, profile
+  tab opened, `WORKFLOW_COMPLETE` sent.
+- **multiple** — ticket autofilled with the phone number only, the workflow
+  context (phone, ticket tab, candidates) is saved as a pending selection in
+  session storage, and `REQUESTER_SELECTION_REQUIRED` is sent to the
+  sidepanel, which renders a picker. When the tech clicks a name the
+  sidepanel sends `SELECT_REQUESTER`; the background validates it against
+  the pending candidates, stores the requester, re-runs the (idempotent)
+  autofill to fill in the TM Name, opens the profile tab, and completes.
+- **none** — a genuine no-match: the ticket is still prepped with the phone
+  number and `WORKFLOW_NO_MATCH` is sent, which the sidepanel shows as a
+  warning ("fill in TM Name manually"), not an error.
+- **error** — scrape failure; reported via `WORKFLOW_ERROR` as before.
 
 **Step 5: Autofill New Ticket**
 ```typescript
@@ -504,6 +518,23 @@ interface StoredRequester {
   requesterName: string;
   requesterUserId: string;
   phoneNumber: string;
+  timestamp: number;
+}
+```
+
+**Chrome Session Storage** (chrome.storage.session):
+- Holds the pending requester selection while the workflow waits for the
+  tech to pick from multiple matches (the MV3 service worker may unload
+  before the click arrives, so this cannot live in memory)
+- Cleared when a selection completes, when a new workflow starts, on
+  browser restart, or after a 15-minute TTL
+
+```typescript
+interface PendingSelection {
+  phoneNumber: string;
+  ticketTabId: number;
+  requesters: RequesterInfo[];
+  source?: 'requesters' | 'tickets';
   timestamp: number;
 }
 ```
@@ -640,11 +671,17 @@ chrome.runtime.onMessage.addListener(handleMessage);
 
 function handleMessage(message: Message): void {
   switch (message.type) {
+    case 'REQUESTER_SELECTION_REQUIRED':
+      handleRequesterSelectionRequired(message); // renders the picker
+      break;
     case 'WORKFLOW_UPDATE':
       handleWorkflowUpdate(message);
       break;
     case 'WORKFLOW_COMPLETE':
       handleWorkflowComplete(message);
+      break;
+    case 'WORKFLOW_NO_MATCH':
+      handleWorkflowNoMatch(message); // warning state, not an error
       break;
     case 'WORKFLOW_ERROR':
       handleWorkflowError(message);

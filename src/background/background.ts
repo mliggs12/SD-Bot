@@ -4,16 +4,21 @@ import {
   Message,
   TriggerWorkflowMessage,
   PhoneNumberIdentifiedMessage,
+  RequesterSelectionRequiredMessage,
+  SelectRequesterMessage,
   WorkflowUpdateMessage,
   WorkflowCompleteMessage,
+  WorkflowNoMatchMessage,
   WorkflowErrorMessage,
   StoredRequester,
+  RequesterInfo,
   CallingNumberResultMessage,
   SearchResultsResultMessage,
   AutofillTicketResultMessage,
   isSuccessfulCallingNumberResult,
   isSuccessfulSingleMatchResult,
-  isMultipleRequestersResult
+  isMultipleRequestersResult,
+  isNoMatchResult
 } from '../types';
 import { TabManager } from '../services/tab-manager';
 import { StorageService } from '../services/storage-service';
@@ -51,11 +56,22 @@ chrome.runtime.onMessage.addListener((
         console.error('Workflow error:', error);
         // Error already sent via message
       });
-    
+
     // Return true to indicate async response
     return true;
   }
-  
+
+  if (message.type === 'SELECT_REQUESTER') {
+    // Tech picked a requester in the sidepanel; finish the paused workflow
+    handleRequesterSelection(message)
+      .catch((error) => {
+        console.error('Requester selection error:', error);
+        sendWorkflowError('Extension Error', formatErrorWithStack(error, true));
+      });
+
+    return true;
+  }
+
   return false;
 });
 
@@ -79,46 +95,131 @@ async function handleWorkflow(): Promise<void> {
       sendWorkflowUpdate(`Searching FreshService for ${phoneNumber}...`);
     }
 
+    // A new call supersedes any selection still pending from a previous one
+    await StorageService.clearPendingSelection();
+
     // Always open new ticket tab first; keep a handle on it for autofill
     const ticketTab = await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
 
     const searchTab = await searchFreshService(phoneNumber);
 
-    // Identify the requester, but prep the new ticket even when identification fails
-    let requesterData: StoredRequester | undefined;
-    let searchError: unknown;
-    try {
-      requesterData = await processSearchResults(searchTab.id!, phoneNumber);
-    } catch (error) {
-      searchError = error;
-    }
+    const outcome = await processSearchResults(searchTab.id!, phoneNumber);
 
-    // TM Name is left blank when no unique requester was found
+    // Prep the new ticket in every case; TM Name is left blank unless a
+    // unique requester was identified
     const autofillError = await autofillNewTicket(
       ticketTab.id!,
-      requesterData?.requesterName ?? '',
+      outcome.kind === 'single' ? outcome.requester.requesterName : '',
       phoneNumber
     );
 
-    if (searchError !== undefined || !requesterData) {
-      throw searchError;
+    switch (outcome.kind) {
+      case 'single': {
+        await openRequesterProfileTab(outcome.requester);
+
+        if (autofillError) {
+          sendWorkflowError(
+            'Ticket autofill failed',
+            `${autofillError} Fill the ticket description manually.`
+          );
+          return;
+        }
+
+        sendWorkflowComplete(outcome.requester);
+        return;
+      }
+
+      case 'multiple': {
+        // Pause the workflow and ask the tech to pick; the selection handler
+        // finishes the job (store requester, update ticket, open profile).
+        // Any autofill error here is ignored — the post-selection autofill
+        // pass retries and reports failures itself.
+        await StorageService.setPendingSelection({
+          phoneNumber,
+          ticketTabId: ticketTab.id!,
+          requesters: outcome.requesters,
+          source: outcome.source,
+          timestamp: Date.now(),
+        });
+
+        sendRequesterSelectionRequired(outcome.requesters, phoneNumber, outcome.source);
+        return;
+      }
+
+      case 'none': {
+        // Legitimate no-match: the ticket prepped with phone number only is
+        // the final deliverable; the tech fills TM Name manually
+        sendWorkflowNoMatch(phoneNumber, outcome.reason, autofillError === null);
+        return;
+      }
+
+      case 'error': {
+        throw new Error(`Requester not uniquely identified: ${outcome.reason}`);
+      }
     }
-
-    await openRequesterProfileTab(requesterData);
-
-    if (autofillError) {
-      sendWorkflowError(
-        'Ticket autofill failed',
-        `${autofillError} Fill the ticket description manually.`
-      );
-      return;
-    }
-
-    sendWorkflowComplete(requesterData);
   } catch (error) {
     const errorMessage = formatErrorWithStack(error, true);
     sendWorkflowError('Extension Error', errorMessage);
   }
+}
+
+/**
+ * Finish a workflow paused on manual requester selection: store the chosen
+ * requester, fill the TM Name on the already-prepped ticket, and open the
+ * requester's profile tab
+ */
+async function handleRequesterSelection(message: SelectRequesterMessage): Promise<void> {
+  const pending = await StorageService.getPendingSelection();
+  if (!pending) {
+    sendWorkflowError(
+      'Selection expired',
+      'No workflow is waiting for a requester selection. Run the workflow again.'
+    );
+    return;
+  }
+
+  // Only accept a requester that was actually offered for this call
+  const chosen = pending.requesters.find((r) => r.userId === message.requester.userId);
+  if (!chosen) {
+    sendWorkflowError(
+      'Invalid selection',
+      'The selected requester is not part of the current search results.'
+    );
+    return;
+  }
+
+  await StorageService.clearPendingSelection();
+
+  const requesterData: StoredRequester = {
+    requesterName: chosen.name,
+    requesterUserId: chosen.userId,
+    phoneNumber: pending.phoneNumber,
+    timestamp: Date.now(),
+    source: pending.source,
+  };
+  await StorageService.setCurrentRequester(requesterData);
+
+  sendWorkflowUpdate(`Continuing with ${chosen.name}. Updating ticket...`);
+
+  // Second autofill pass on the prepped ticket fills in the TM Name;
+  // rewriteDescription is idempotent so the phone line is not duplicated
+  const autofillError = await autofillNewTicket(
+    pending.ticketTabId,
+    chosen.name,
+    pending.phoneNumber
+  );
+
+  await openRequesterProfileTab(requesterData);
+
+  if (autofillError) {
+    sendWorkflowError(
+      'Ticket autofill failed',
+      `${autofillError} Fill the TM Name manually.`
+    );
+    return;
+  }
+
+  sendWorkflowComplete(requesterData);
 }
 
 /**
@@ -180,60 +281,57 @@ async function searchFreshService(phoneNumber: string): Promise<chrome.tabs.Tab>
 }
 
 /**
- * Step 4: Process search results and store requester data
+ * What the search results yielded, and everything the workflow needs to act on it
+ */
+type SearchOutcome =
+  | { kind: 'single'; requester: StoredRequester }
+  | { kind: 'multiple'; requesters: RequesterInfo[]; source?: 'requesters' | 'tickets' }
+  | { kind: 'none'; reason: string }
+  | { kind: 'error'; reason: string };
+
+/**
+ * Step 4: Process search results into a workflow outcome
+ * A single unique match is stored as the current requester; multiple matches
+ * and no-match results are returned for the workflow to handle
  * @param searchTabId - The tab ID of the FreshService search results tab
  * @param phoneNumber - The phone number that was searched
- * @returns The stored requester data
- * @throws Error if requester cannot be uniquely identified
  */
 async function processSearchResults(
   searchTabId: number,
   phoneNumber: string
-): Promise<StoredRequester> {
+): Promise<SearchOutcome> {
   const searchResults = await MessageService.scrapeSearchResults(searchTabId);
+  const data = searchResults.data;
 
-  // Check for scenario 1: Single unique requester
-  if (searchResults.success && searchResults.data && isSuccessfulSingleMatchResult(searchResults.data)) {
-    // Store requester data - TypeScript now knows data.name and data.userId are defined
-    const source = searchResults.data.source;
+  // Scenario 1: Single unique requester
+  if (searchResults.success && data && isSuccessfulSingleMatchResult(data)) {
     const requesterData: StoredRequester = {
-      requesterName: searchResults.data.name,
-      requesterUserId: searchResults.data.userId,
+      requesterName: data.name,
+      requesterUserId: data.userId,
       phoneNumber: phoneNumber,
       timestamp: Date.now(),
-      source: source,
+      source: data.source,
     };
 
     await StorageService.setCurrentRequester(requesterData);
-    const sourceLabel = source === 'tickets' ? ' (from tickets)' : '';
+    const sourceLabel = data.source === 'tickets' ? ' (from tickets)' : '';
     sendWorkflowUpdate(`Requester found${sourceLabel}. Opening tabs...`);
 
-    return requesterData;
+    return { kind: 'single', requester: requesterData };
   }
 
-  // Check for scenario 2: Multiple requesters from tickets
-  if (searchResults.success && searchResults.data && isMultipleRequestersResult(searchResults.data)) {
-    const requesters = searchResults.data.requesters;
-    const requesterNames = requesters.map(r => r.name).join(', ');
-
-    sendWorkflowError(
-      'Multiple requesters found',
-      `Found ${requesters.length} requesters in tickets: ${requesterNames}. Manual selection required.`
-    );
-
-    throw new Error(`Multiple requesters found: ${requesterNames}`);
+  // Scenario 2: Multiple requesters (from the Requesters section or tickets)
+  if (searchResults.success && data && isMultipleRequestersResult(data)) {
+    return { kind: 'multiple', requesters: data.requesters, source: data.source };
   }
 
-  // Scenario 3: Not found or other error
-  const reason = searchResults.data?.reason || searchResults.error || 'Unknown error';
-  const count = searchResults.data?.count;
+  // Scenario 3: The search page rendered but held no requester at all
+  if (data && isNoMatchResult(data)) {
+    return { kind: 'none', reason: data.reason || 'No requester found in search results' };
+  }
 
-  sendWorkflowError(
-    'Requester not uniquely identified',
-    `${reason}${count ? ` (Found ${count} requesters)` : ''}. Manual selection may be required.`
-  );
-
-  throw new Error(`Requester not uniquely identified: ${reason}`);
+  // Anything else is a scrape failure, not a search outcome
+  return { kind: 'error', reason: data?.reason || searchResults.error || 'Unknown error' };
 }
 
 /**
@@ -325,6 +423,34 @@ function sendWorkflowUpdate(message: string): void {
     type: 'WORKFLOW_UPDATE',
     status: 'in_progress',
     message: message,
+  });
+}
+
+/**
+ * Ask the sidepanel to show the requester picker
+ */
+function sendRequesterSelectionRequired(
+  requesters: RequesterInfo[],
+  phoneNumber: string,
+  source?: 'requesters' | 'tickets'
+): void {
+  MessageService.sendToSidepanel<RequesterSelectionRequiredMessage>({
+    type: 'REQUESTER_SELECTION_REQUIRED',
+    requesters: requesters,
+    phoneNumber: phoneNumber,
+    source: source,
+  });
+}
+
+/**
+ * Tell the sidepanel the search legitimately found no requester
+ */
+function sendWorkflowNoMatch(phoneNumber: string, reason: string, ticketPrepped: boolean): void {
+  MessageService.sendToSidepanel<WorkflowNoMatchMessage>({
+    type: 'WORKFLOW_NO_MATCH',
+    phoneNumber: phoneNumber,
+    reason: reason,
+    ticketPrepped: ticketPrepped,
   });
 }
 
