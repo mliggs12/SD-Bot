@@ -24,6 +24,7 @@ import {
   FRESHSERVICE_NEW_TICKET_URL,
   FRESHSERVICE_USER_PROFILE_URL,
   AUTOFILL_RETRY,
+  CALLING_NUMBER_RETRY,
   TEST_MODE,
   TEST_PHONE_NUMBER
 } from '../utils/config';
@@ -121,33 +122,48 @@ async function handleWorkflow(): Promise<void> {
 }
 
 /**
- * Step 1: Find RingCentral MAX tab
+ * Step 1: Find RingCentral MAX tab and bring it to the front
+ * The MAX window is often buried behind others when a call comes in, and
+ * Chrome deprioritizes hidden windows, so the call UI may not render or
+ * update until the window is visible again
  * @returns The RingCentral MAX tab
  * @throws Error if tab is not found
  */
 async function findRingCentralTab(): Promise<chrome.tabs.Tab> {
   sendWorkflowUpdate('Searching for MAX window...');
   const maxTab = await TabManager.findTabByUrl(RINGCENTRAL_PATTERN);
+  await TabManager.activateTab(maxTab.id!);
   sendWorkflowUpdate('Found MAX window. Checking for call data...');
   return maxTab;
 }
 
 /**
  * Step 2: Extract calling number from RingCentral content script
+ * Retries briefly: the call UI may need a moment to render after the MAX
+ * window is brought forward
  * @param tabId - The tab ID of the RingCentral MAX tab
  * @returns The extracted phone number
  * @throws Error if calling number cannot be extracted
  */
 async function extractCallingNumber(tabId: number): Promise<string> {
-  const callingNumberResult = await MessageService.getCallingNumber(tabId);
+  let lastError: string | undefined;
 
-  if (!isSuccessfulCallingNumberResult(callingNumberResult)) {
-    throw new Error(
-      callingNumberResult.error || 'No active call detected or calling number not available'
-    );
+  for (let attempt = 0; attempt < CALLING_NUMBER_RETRY.attempts; attempt++) {
+    if (attempt > 0) {
+      await delay(CALLING_NUMBER_RETRY.delayMs);
+    }
+    try {
+      const callingNumberResult = await MessageService.getCallingNumber(tabId);
+      if (isSuccessfulCallingNumberResult(callingNumberResult)) {
+        return callingNumberResult.phoneNumber;
+      }
+      lastError = callingNumberResult.error;
+    } catch (error) {
+      lastError = formatErrorWithStack(error, true);
+    }
   }
 
-  return callingNumberResult.phoneNumber;
+  throw new Error(lastError || 'No active call detected or calling number not available');
 }
 
 /**
@@ -235,13 +251,20 @@ async function autofillNewTicket(
 ): Promise<string | null> {
   sendWorkflowUpdate('Prepping new ticket with Standard Ticket template...');
   try {
+    // Foreground the ticket tab first: hidden tabs may never finish rendering
+    // the Ember form, and the prepped ticket is where the tech works next
+    await TabManager.activateTab(ticketTabId);
+    await TabManager.waitForTabComplete(ticketTabId);
+
     const result = await sendAutofillWithRetry(ticketTabId, requesterName, phoneNumber);
     if (!result.success) {
+      console.error('Ticket autofill failed:', result.error);
       return result.error || 'Ticket autofill failed for an unknown reason.';
     }
     sendWorkflowUpdate('New ticket prepped with caller details.');
     return null;
   } catch (error) {
+    console.error('Ticket autofill failed:', error);
     return formatErrorWithStack(error, true);
   }
 }
@@ -258,7 +281,7 @@ async function sendAutofillWithRetry(
   let lastError: unknown;
   for (let attempt = 0; attempt < AUTOFILL_RETRY.attempts; attempt++) {
     if (attempt > 0) {
-      await new Promise<void>((resolve) => setTimeout(resolve, AUTOFILL_RETRY.delayMs));
+      await delay(AUTOFILL_RETRY.delayMs);
     }
     try {
       return await MessageService.autofillTicket(tabId, requesterName, phoneNumber);
@@ -267,6 +290,13 @@ async function sendAutofillWithRetry(
     }
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+/**
+ * Promise-based delay helper
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 /**

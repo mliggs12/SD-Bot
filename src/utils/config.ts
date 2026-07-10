@@ -73,6 +73,13 @@ export const AUTOFILL_RETRY = {
   delayMs: 1000,
 } as const;
 
+// Retry configuration for extracting the calling number from MAX
+// (the call UI may need a moment to render after the window is brought forward)
+export const CALLING_NUMBER_RETRY = {
+  attempts: 8,
+  delayMs: 500,
+} as const;
+
 // Storage keys
 export const STORAGE_KEYS = {
   currentRequester: 'currentRequester',

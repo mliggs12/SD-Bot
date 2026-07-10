@@ -360,7 +360,16 @@ const phoneNumber = result.phoneNumber;
 
 The workflow executes when the user clicks the extension icon. The new ticket
 tab is opened right after the calling number is identified (before the search),
-and its tab ID is kept so the autofill step can message it later:
+and its tab ID is kept so the autofill step can message it later.
+
+Two tabs are deliberately brought to the foreground during the workflow,
+because Chrome deprioritizes hidden tabs/windows (requestAnimationFrame never
+fires, timers are throttled), which can prevent SPA pages from rendering:
+
+- The **MAX tab** is activated (tab + window focus) before extracting the
+  calling number — the MAX window is often buried when a call comes in
+- The **new ticket tab** is activated before autofill so the Ember form
+  actually renders; it is also where the tech works next
 
 **Step 1: Find RingCentral MAX Tab**
 ```typescript
@@ -1309,9 +1318,14 @@ const element =
 
 ## Version History
 
-**Current Version**: 1.6.0
+**Current Version**: 1.6.1
 
-**Recent Changes**:
+**Recent Changes (1.6.1)**:
+- MAX tab is now activated (tab + window focus) before number extraction, with retries while the call UI renders — fixes extraction failing when the MAX window is buried behind others
+- New ticket tab is activated and awaited (`TabManager.activateTab` / `waitForTabComplete`) before the autofill message is sent — fixes autofill stalling in hidden background tabs
+- Ticket form filler logs each stage to the ticket tab's console with a `[SD-Bot]` prefix for field debugging
+
+**Recent Changes (1.6.0)**:
 - Added new ticket autofill: applies the "Standard Ticket" template on the new ticket tab and rewrites the description to TM Name / Ph# / Laptop# lines pre-filled with requester name and phone number (blank TM Name when no unique requester match)
 - Added `AUTOFILL_TICKET` / `AUTOFILL_TICKET_RESULT` message types and `MessageService.autofillTicket`
 - Added `src/scrapers/ticket-form-filler.ts` and `src/utils/dom-utils.ts` (DOM polling waits, synthetic mouse event sequences)

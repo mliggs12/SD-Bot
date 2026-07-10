@@ -106,5 +106,42 @@ export class TabManager {
   static async createTab(url: string, active: boolean = false): Promise<chrome.tabs.Tab> {
     return chrome.tabs.create({ url, active });
   }
+
+  /**
+   * Bring an existing tab to the foreground, including focusing its window
+   * Hidden tabs are deprioritized by Chrome (requestAnimationFrame never fires,
+   * timers are throttled), which can keep SPA pages from rendering or updating,
+   * and a tab in a buried window stays hidden even when it is the active tab
+   * @param tabId - The tab to activate
+   */
+  static async activateTab(tabId: number): Promise<void> {
+    const tab = await chrome.tabs.update(tabId, { active: true });
+    if (tab?.windowId !== undefined) {
+      await chrome.windows.update(tab.windowId, { focused: true });
+    }
+  }
+
+  /**
+   * Wait for an existing tab to reach status 'complete'
+   * Resolves (with a console warning) on timeout rather than rejecting, since a
+   * slow tab may still become usable moments later
+   * @param tabId - The tab to wait for
+   * @param timeout - Maximum time to wait in milliseconds (default: TIMEOUTS.tabLoad)
+   */
+  static async waitForTabComplete(tabId: number, timeout: number = TIMEOUTS.tabLoad): Promise<void> {
+    const deadline = Date.now() + timeout;
+
+    for (;;) {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab.status === 'complete') {
+        return;
+      }
+      if (Date.now() >= deadline) {
+        console.warn(`Tab ${tabId} not complete after ${timeout}ms. Proceeding anyway.`);
+        return;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+    }
+  }
 }
 

@@ -4,6 +4,13 @@ import { waitFor, dispatchMouseSequence } from '../utils/dom-utils';
 import { formatErrorWithStack } from '../utils/error-handler';
 
 /**
+ * Stage logging so the ticket tab's DevTools console shows autofill progress
+ */
+function log(message: string): void {
+  console.log(`[SD-Bot] ${message}`);
+}
+
+/**
  * Removes Froala's zero-width marker characters and trims whitespace
  */
 function cleanText(text: string | null | undefined): string {
@@ -51,15 +58,18 @@ async function applyTemplate(): Promise<HTMLElement> {
   // Template may already be applied (e.g. workflow re-run against the same tab)
   const alreadyPopulated = getPopulatedEditor();
   if (alreadyPopulated) {
+    log('Template content already present; skipping dropdown selection');
     return alreadyPopulated;
   }
 
+  log('Waiting for template dropdown trigger...');
   const trigger = await waitFor(
     () => document.querySelector<HTMLElement>(FRESHSERVICE_TICKET_SELECTORS.templateTrigger),
     TIMEOUTS.ticketFormLoad,
     'template dropdown trigger'
   );
 
+  log('Trigger found; opening dropdown');
   dispatchMouseSequence(trigger);
 
   let option: HTMLElement;
@@ -72,6 +82,13 @@ async function applyTemplate(): Promise<HTMLElement> {
   } catch {
     // Fallback: some power-select configurations toggle from the inline search
     // input inside the trigger rather than the trigger itself
+    const optionCount = document.querySelectorAll(
+      FRESHSERVICE_TICKET_SELECTORS.templateOption
+    ).length;
+    log(
+      `Dropdown did not show "${TICKET_TEMPLATE.name}" after trigger click ` +
+        `(${optionCount} option(s) visible); retrying via inline search input`
+    );
     const searchInput = trigger.querySelector<HTMLElement>(
       FRESHSERVICE_TICKET_SELECTORS.templateSearchInput
     );
@@ -86,8 +103,10 @@ async function applyTemplate(): Promise<HTMLElement> {
     );
   }
 
+  log(`Selecting "${TICKET_TEMPLATE.name}" option`);
   dispatchMouseSequence(option);
 
+  log('Waiting for template content to populate the editor...');
   return waitFor(
     getPopulatedEditor,
     TIMEOUTS.templateApply,
@@ -161,17 +180,21 @@ export async function autofillNewTicket(
   phoneNumber: string
 ): Promise<TicketAutofillResult> {
   try {
+    log(`Autofill started (requester: "${requesterName || '(blank)'}", phone: ${phoneNumber})`);
     const editor = await applyTemplate();
     rewriteDescription(editor, {
       [TICKET_TEMPLATE.tmNameLabel]: requesterName,
       [TICKET_TEMPLATE.phoneLabel]: phoneNumber,
       [TICKET_TEMPLATE.laptopLabel]: '',
     });
+    log('Description rewritten; autofill complete');
     return { success: true };
   } catch (error) {
+    const message = `Error autofilling new ticket: ${formatErrorWithStack(error, true)}`;
+    console.error(`[SD-Bot] ${message}`);
     return {
       success: false,
-      error: `Error autofilling new ticket: ${formatErrorWithStack(error, true)}`,
+      error: message,
     };
   }
 }
