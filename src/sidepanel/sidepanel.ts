@@ -7,6 +7,7 @@ import {
   SelectRequesterMessage,
   WorkflowUpdateMessage,
   WorkflowCompleteMessage,
+  WorkflowDefaultNumberMessage,
   WorkflowNoMatchMessage,
   WorkflowErrorMessage
 } from '../types';
@@ -52,6 +53,9 @@ function handleMessage(message: Message): void {
       break;
     case 'WORKFLOW_COMPLETE':
       handleWorkflowComplete(message);
+      break;
+    case 'WORKFLOW_DEFAULT_NUMBER':
+      handleWorkflowDefaultNumber(message);
       break;
     case 'WORKFLOW_NO_MATCH':
       handleWorkflowNoMatch(message);
@@ -125,6 +129,30 @@ function selectRequester(requester: RequesterInfo): void {
 }
 
 /**
+ * Handle a call that came in on the default queue number: the caller's real
+ * number is unknown, so no search was run and a blank ticket was prepped
+ */
+function handleWorkflowDefaultNumber(message: WorkflowDefaultNumberMessage): void {
+  if (!resultDiv) return;
+
+  resultDiv.innerHTML = '';
+  resultDiv.className = 'warning';
+  resultDiv.removeAttribute('style');
+
+  const title = document.createElement('div');
+  title.className = 'picker-title';
+  title.textContent = `Default number (${message.phoneNumber})`;
+  resultDiv.appendChild(title);
+
+  const body = document.createElement('div');
+  body.className = 'picker-hint';
+  body.textContent = message.ticketPrepped
+    ? 'Caller ID unavailable — search skipped. Blank ticket prepped; ask the caller for their details.'
+    : 'Caller ID unavailable — search skipped. The ticket could not be prepped automatically.';
+  resultDiv.appendChild(body);
+}
+
+/**
  * Handle a search that legitimately found no requester: the ticket is still
  * prepped with the phone number, so show a warning rather than an error
  */
@@ -175,10 +203,15 @@ function handleWorkflowComplete(message: WorkflowCompleteMessage): void {
   if (!resultDiv || !message.requesterData) return;
 
   const { requesterName, requesterUserId, phoneNumber, source } = message.requesterData;
+  const assets = message.assets ?? [];
 
   // Update UI elements
   if (requesterNameSpan) requesterNameSpan.textContent = requesterName;
   if (phoneNumberSpan) phoneNumberSpan.textContent = phoneNumber;
+  if (laptopSerialSpan) {
+    laptopSerialSpan.textContent =
+      assets.length > 0 ? assets.map((a) => a.name).join('; ') : 'none found';
+  }
 
   // Status message with source indicator
   const sourceLabel = source === 'tickets' ? ' (matched from tickets)' : '';

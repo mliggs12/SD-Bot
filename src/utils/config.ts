@@ -2,6 +2,10 @@
 export const RINGCENTRAL_DOMAIN = 'https://max.niceincontact.com';
 export const RINGCENTRAL_PATTERN = 'https://max.niceincontact.com/*';
 
+// The generic queue number shown when a caller's ID is unavailable —
+// searching FreshService for it is pointless, so the workflow stops early
+export const DEFAULT_PHONE_NUMBER = '7136214663';
+
 export const FRESHSERVICE_BASE_URL = 'https://support.houseloan.com';
 export const FRESHSERVICE_SEARCH_URL = `${FRESHSERVICE_BASE_URL}/search/all`;
 export const FRESHSERVICE_NEW_TICKET_URL = `${FRESHSERVICE_BASE_URL}/a/tickets/new`;
@@ -26,6 +30,7 @@ export const FRESHSERVICE_SELECTORS = {
   sectionHeading: 'li.heading',
   requestersHeading: 'Requesters',
   ticketsHeading: 'Tickets',
+  inventoryHeading: 'Inventory',
   requesterLink: 'a.search-title',
   // For tickets section - user links within ticket items
   ticketUserLink: 'a.user_name',
@@ -77,6 +82,13 @@ export const AUTOFILL_RETRY = {
 // (the call UI may need a moment to render after the window is brought forward)
 export const CALLING_NUMBER_RETRY = {
   attempts: 8,
+  delayMs: 500,
+} as const;
+
+// Retry configuration for scraping the inventory search results
+// (the content script re-injects after the search tab is navigated)
+export const INVENTORY_RETRY = {
+  attempts: 6,
   delayMs: 500,
 } as const;
 

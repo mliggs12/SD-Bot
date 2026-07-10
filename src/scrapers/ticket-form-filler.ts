@@ -173,23 +173,27 @@ function rewriteDescription(editor: HTMLElement, values: Readonly<Record<string,
  *
  *   TM Name: <requesterName>
  *   Ph#: <phoneNumber>
- *   Laptop#:
+ *   Laptop#: <laptopSerial>
  *
  * @param requesterName - Requester name; empty string leaves TM Name blank
  *   (used when no unique requester was identified)
- * @param phoneNumber - Caller phone number in raw format
+ * @param phoneNumber - Caller phone number in raw format; empty string leaves
+ *   Ph# blank (used when the call came in on the default queue number)
+ * @param laptopSerial - Asset identifier; empty string leaves Laptop# blank
+ *   (used unless the requester has exactly one asset in inventory)
  */
 export async function autofillNewTicket(
   requesterName: string,
-  phoneNumber: string
+  phoneNumber: string,
+  laptopSerial: string = ''
 ): Promise<TicketAutofillResult> {
   try {
-    log(`Autofill started (requester: "${requesterName || '(blank)'}", phone: ${phoneNumber})`);
+    log(`Autofill started (requester: "${requesterName || '(blank)'}", phone: ${phoneNumber || '(blank)'}, laptop: "${laptopSerial || '(blank)'}")`);
     const editor = await applyTemplate();
     rewriteDescription(editor, {
       [TICKET_TEMPLATE.tmNameLabel]: requesterName,
       [TICKET_TEMPLATE.phoneLabel]: phoneNumber,
-      [TICKET_TEMPLATE.laptopLabel]: '',
+      [TICKET_TEMPLATE.laptopLabel]: laptopSerial,
     });
     log('Description rewritten; autofill complete');
     return { success: true };

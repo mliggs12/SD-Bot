@@ -147,6 +147,9 @@ sd-bot/
     the Requesters section or ticket entries), and genuine no-match
     (`noMatch: true`) distinguished from scrape failures
   - Returns structured RequesterData
+  - Also scrapes the Inventory section (`scrapeInventoryAssets`) after the
+    search tab is re-searched by requester name, returning the requester's
+    assets as structured InventoryData
 
 - **Ticket Form Filler** ([src/scrapers/ticket-form-filler.ts](src/scrapers/ticket-form-filler.ts)):
   - Runs in the new ticket tab (Ember SPA — waits for elements via polling)
@@ -177,12 +180,14 @@ sd-bot/
 
 #### Side Panel ([src/sidepanel/](src/sidepanel/))
 - HTML interface for workflow status
-- Displays requester information
+- Displays requester information and their scraped inventory assets
 - Real-time updates during workflow execution
 - Auto-triggers workflow on panel open
 - Requester picker when the search matches multiple people: clicking a name
   sends SELECT_REQUESTER to the background to finish the paused workflow
 - Warning (not error) state when the search legitimately finds no requester
+- Warning state when the call comes in on the default queue number
+  (caller ID unavailable — no search attempted)
 
 #### Utilities
 - **Config** ([src/utils/config.ts](src/utils/config.ts)): URL patterns, DOM selectors, timeouts, test mode
@@ -190,8 +195,8 @@ sd-bot/
 - **Error Handler** ([src/utils/error-handler.ts](src/utils/error-handler.ts)): Error formatting utilities
 
 #### Types ([src/types/index.ts](src/types/index.ts))
-- 14 message type definitions
-- Data structure interfaces (CallingNumberResult, RequesterData, StoredRequester, PendingSelection)
+- 17 message type definitions
+- Data structure interfaces (CallingNumberResult, RequesterData, InventoryData, StoredRequester, PendingSelection)
 - Custom error classes (ExtensionError, ScraperError, TabError)
 - Type guard functions for runtime type checking
 
@@ -425,20 +430,33 @@ async function processSearchResults(
 ): Promise<SearchOutcome> { /* ... */ }
 ```
 
-The workflow branches on the outcome:
+Before any search, the workflow checks the extracted number against the
+default queue number (`DEFAULT_PHONE_NUMBER`, 7136214663 — what shows when
+the real caller ID is unavailable). On a match the search is skipped
+entirely: a blank Standard Ticket is prepped (TM Name and Ph# both empty)
+and `WORKFLOW_DEFAULT_NUMBER` tells the sidepanel to show a "caller ID
+unavailable" warning.
 
-- **single** — requester stored, ticket autofilled with their name, profile
-  tab opened, `WORKFLOW_COMPLETE` sent.
+Otherwise the workflow branches on the search outcome:
+
+- **single** — requester stored, then the search tab is re-searched with the
+  requester's *name* and the Inventory section scraped for their assets
+  (`scrapeRequesterAssets`, non-fatal on failure). The ticket is autofilled
+  with name, phone, and — when exactly one asset was found — its name on the
+  Laptop# line. Profile tab opened, `WORKFLOW_COMPLETE` sent with the assets
+  for the sidepanel to display.
 - **multiple** — ticket autofilled with the phone number only, the workflow
-  context (phone, ticket tab, candidates) is saved as a pending selection in
-  session storage, and `REQUESTER_SELECTION_REQUIRED` is sent to the
-  sidepanel, which renders a picker. When the tech clicks a name the
+  context (phone, ticket tab, search tab, candidates) is saved as a pending
+  selection in session storage, and `REQUESTER_SELECTION_REQUIRED` is sent to
+  the sidepanel, which renders a picker. When the tech clicks a name the
   sidepanel sends `SELECT_REQUESTER`; the background validates it against
-  the pending candidates, stores the requester, re-runs the (idempotent)
-  autofill to fill in the TM Name, opens the profile tab, and completes.
-- **none** — a genuine no-match: the ticket is still prepped with the phone
-  number and `WORKFLOW_NO_MATCH` is sent, which the sidepanel shows as a
-  warning ("fill in TM Name manually"), not an error.
+  the pending candidates, stores the requester, scrapes their assets, re-runs
+  the (idempotent) autofill to fill in the TM Name and Laptop#, opens the
+  profile tab, and completes.
+- **none** — a genuine no-match: the search tab is closed, the ticket is
+  still prepped with the phone number, and `WORKFLOW_NO_MATCH` is sent, which
+  the sidepanel shows as a warning ("fill in TM Name manually"), not an
+  error.
 - **error** — scrape failure; reported via `WORKFLOW_ERROR` as before.
 
 **Step 5: Autofill New Ticket**
@@ -533,6 +551,7 @@ interface StoredRequester {
 interface PendingSelection {
   phoneNumber: string;
   ticketTabId: number;
+  searchTabId: number; // reused for the follow-up inventory search
   requesters: RequesterInfo[];
   source?: 'requesters' | 'tickets';
   timestamp: number;
@@ -678,7 +697,10 @@ function handleMessage(message: Message): void {
       handleWorkflowUpdate(message);
       break;
     case 'WORKFLOW_COMPLETE':
-      handleWorkflowComplete(message);
+      handleWorkflowComplete(message); // also lists scraped assets
+      break;
+    case 'WORKFLOW_DEFAULT_NUMBER':
+      handleWorkflowDefaultNumber(message); // caller ID unavailable
       break;
     case 'WORKFLOW_NO_MATCH':
       handleWorkflowNoMatch(message); // warning state, not an error

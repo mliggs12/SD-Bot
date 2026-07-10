@@ -4,6 +4,8 @@ import {
   SearchResultsResultMessage,
   GetCallingNumberMessage,
   ScrapeSearchResultsMessage,
+  ScrapeInventoryMessage,
+  InventoryResultMessage,
   AutofillTicketMessage,
   AutofillTicketResultMessage
 } from '../types';
@@ -104,22 +106,38 @@ export class MessageService {
   }
 
   /**
+   * Request inventory (asset) scraping from the FreshService content script
+   * @param tabId - The ID of the tab showing search results for the requester's name
+   * @returns Promise that resolves with the inventory results
+   * @throws Error if the message cannot be sent or if no response is received
+   */
+  static async scrapeInventory(tabId: number): Promise<InventoryResultMessage> {
+    const request: ScrapeInventoryMessage = {
+      type: 'SCRAPE_INVENTORY',
+    };
+    return this.sendToTab<InventoryResultMessage>(tabId, request);
+  }
+
+  /**
    * Request new ticket autofill from the FreshService content script
    * @param tabId - The ID of the tab containing the new ticket form
    * @param requesterName - Requester name for the TM Name line ('' leaves it blank)
-   * @param phoneNumber - Caller phone number for the Ph# line
+   * @param phoneNumber - Caller phone number for the Ph# line ('' leaves it blank)
+   * @param laptopSerial - Asset identifier for the Laptop# line ('' leaves it blank)
    * @returns Promise that resolves with the autofill result
    * @throws Error if the message cannot be sent or if no response is received
    */
   static async autofillTicket(
     tabId: number,
     requesterName: string,
-    phoneNumber: string
+    phoneNumber: string,
+    laptopSerial: string = ''
   ): Promise<AutofillTicketResultMessage> {
     const request: AutofillTicketMessage = {
       type: 'AUTOFILL_TICKET',
       requesterName,
       phoneNumber,
+      laptopSerial,
     };
     return this.sendToTab<AutofillTicketResultMessage>(tabId, request);
   }

@@ -8,10 +8,12 @@ import {
   SelectRequesterMessage,
   WorkflowUpdateMessage,
   WorkflowCompleteMessage,
+  WorkflowDefaultNumberMessage,
   WorkflowNoMatchMessage,
   WorkflowErrorMessage,
   StoredRequester,
   RequesterInfo,
+  AssetInfo,
   CallingNumberResultMessage,
   SearchResultsResultMessage,
   AutofillTicketResultMessage,
@@ -25,11 +27,13 @@ import { StorageService } from '../services/storage-service';
 import { MessageService } from '../services/message-service';
 import {
   RINGCENTRAL_PATTERN,
+  DEFAULT_PHONE_NUMBER,
   FRESHSERVICE_SEARCH_URL,
   FRESHSERVICE_NEW_TICKET_URL,
   FRESHSERVICE_USER_PROFILE_URL,
   AUTOFILL_RETRY,
   CALLING_NUMBER_RETRY,
+  INVENTORY_RETRY,
   TEST_MODE,
   TEST_PHONE_NUMBER
 } from '../utils/config';
@@ -98,6 +102,17 @@ async function handleWorkflow(): Promise<void> {
     // A new call supersedes any selection still pending from a previous one
     await StorageService.clearPendingSelection();
 
+    // Use case 1: the generic queue number means the caller's ID is unavailable
+    // — searching for it is pointless, so stop after prepping a blank ticket
+    if (isDefaultPhoneNumber(phoneNumber)) {
+      sendWorkflowUpdate('Default number detected. Prepping blank ticket...');
+      const ticketTab = await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
+      // The queue number is not the caller's, so Ph# is left blank too
+      const autofillError = await autofillNewTicket(ticketTab.id!, '', '');
+      sendWorkflowDefaultNumber(phoneNumber, autofillError === null);
+      return;
+    }
+
     // Always open new ticket tab first; keep a handle on it for autofill
     const ticketTab = await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
 
@@ -105,12 +120,21 @@ async function handleWorkflow(): Promise<void> {
 
     const outcome = await processSearchResults(searchTab.id!, phoneNumber);
 
+    // Use cases 3 & 4: for a uniquely identified requester, re-search their
+    // name in the same tab and scrape the Inventory section for their assets
+    let assets: AssetInfo[] = [];
+    if (outcome.kind === 'single') {
+      assets = await scrapeRequesterAssets(searchTab.id!, outcome.requester.requesterName);
+    }
+
     // Prep the new ticket in every case; TM Name is left blank unless a
-    // unique requester was identified
+    // unique requester was identified, Laptop# unless they have exactly
+    // one asset in inventory
     const autofillError = await autofillNewTicket(
       ticketTab.id!,
       outcome.kind === 'single' ? outcome.requester.requesterName : '',
-      phoneNumber
+      phoneNumber,
+      assets.length === 1 ? assets[0].name : ''
     );
 
     switch (outcome.kind) {
@@ -125,18 +149,19 @@ async function handleWorkflow(): Promise<void> {
           return;
         }
 
-        sendWorkflowComplete(outcome.requester);
+        sendWorkflowComplete(outcome.requester, assets);
         return;
       }
 
       case 'multiple': {
         // Pause the workflow and ask the tech to pick; the selection handler
-        // finishes the job (store requester, update ticket, open profile).
-        // Any autofill error here is ignored — the post-selection autofill
-        // pass retries and reports failures itself.
+        // finishes the job (store requester, scrape assets, update ticket,
+        // open profile). Any autofill error here is ignored — the
+        // post-selection autofill pass retries and reports failures itself.
         await StorageService.setPendingSelection({
           phoneNumber,
           ticketTabId: ticketTab.id!,
+          searchTabId: searchTab.id!,
           requesters: outcome.requesters,
           source: outcome.source,
           timestamp: Date.now(),
@@ -147,8 +172,9 @@ async function handleWorkflow(): Promise<void> {
       }
 
       case 'none': {
-        // Legitimate no-match: the ticket prepped with phone number only is
-        // the final deliverable; the tech fills TM Name manually
+        // Use case 2: a genuine no-match — the search tab is useless, close
+        // it; the ticket prepped with phone number only is the deliverable
+        await TabManager.closeTab(searchTab.id!);
         sendWorkflowNoMatch(phoneNumber, outcome.reason, autofillError === null);
         return;
       }
@@ -165,8 +191,8 @@ async function handleWorkflow(): Promise<void> {
 
 /**
  * Finish a workflow paused on manual requester selection: store the chosen
- * requester, fill the TM Name on the already-prepped ticket, and open the
- * requester's profile tab
+ * requester, scrape their inventory assets, fill the TM Name and Laptop# on
+ * the already-prepped ticket, and open the requester's profile tab
  */
 async function handleRequesterSelection(message: SelectRequesterMessage): Promise<void> {
   const pending = await StorageService.getPendingSelection();
@@ -201,12 +227,18 @@ async function handleRequesterSelection(message: SelectRequesterMessage): Promis
 
   sendWorkflowUpdate(`Continuing with ${chosen.name}. Updating ticket...`);
 
-  // Second autofill pass on the prepped ticket fills in the TM Name;
-  // rewriteDescription is idempotent so the phone line is not duplicated
+  // Same as the single-match path: scrape the chosen requester's assets
+  // (the search tab may have been closed meanwhile — that yields no assets)
+  const assets = await scrapeRequesterAssets(pending.searchTabId, chosen.name);
+
+  // Second autofill pass on the prepped ticket fills in the TM Name and
+  // Laptop#; rewriteDescription is idempotent so the phone line is not
+  // duplicated
   const autofillError = await autofillNewTicket(
     pending.ticketTabId,
     chosen.name,
-    pending.phoneNumber
+    pending.phoneNumber,
+    assets.length === 1 ? assets[0].name : ''
   );
 
   await openRequesterProfileTab(requesterData);
@@ -219,7 +251,51 @@ async function handleRequesterSelection(message: SelectRequesterMessage): Promis
     return;
   }
 
-  sendWorkflowComplete(requesterData);
+  sendWorkflowComplete(requesterData, assets);
+}
+
+/**
+ * Use cases 3 & 4: search FreshService for the requester's name (reusing the
+ * existing search tab) and scrape the Inventory section for their assets
+ * Failures are non-fatal — the workflow continues without asset data
+ * @param searchTabId - The search results tab to navigate and scrape
+ * @param requesterName - The identified requester's full name
+ */
+async function scrapeRequesterAssets(
+  searchTabId: number,
+  requesterName: string
+): Promise<AssetInfo[]> {
+  try {
+    sendWorkflowUpdate(`Searching inventory for ${requesterName}'s assets...`);
+    // Foreground the search tab: hidden tabs are render-throttled and the
+    // Ember results page may never finish loading in the background
+    await TabManager.activateTab(searchTabId);
+    const searchUrl = `${FRESHSERVICE_SEARCH_URL}?term=${encodeURIComponent(requesterName)}`;
+    await TabManager.navigateAndWait(searchTabId, searchUrl);
+
+    // Retry while the content script re-injects after the navigation
+    let lastError: string | undefined;
+    for (let attempt = 0; attempt < INVENTORY_RETRY.attempts; attempt++) {
+      if (attempt > 0) {
+        await delay(INVENTORY_RETRY.delayMs);
+      }
+      try {
+        const result = await MessageService.scrapeInventory(searchTabId);
+        if (result.success && result.data) {
+          return result.data.assets;
+        }
+        lastError = result.error;
+      } catch (error) {
+        lastError = formatErrorWithStack(error, true);
+      }
+    }
+
+    console.warn('Inventory scrape found no assets:', lastError);
+    return [];
+  } catch (error) {
+    console.warn('Inventory scrape failed:', error);
+    return [];
+  }
 }
 
 /**
@@ -339,13 +415,15 @@ async function processSearchResults(
  * Failures are reported without aborting the workflow — the opened tabs are still useful
  * @param ticketTabId - The tab ID of the new ticket tab opened at workflow start
  * @param requesterName - Requester name ('' when not uniquely identified)
- * @param phoneNumber - The caller's phone number
+ * @param phoneNumber - The caller's phone number ('' for the default queue number)
+ * @param laptopSerial - Asset identifier ('' unless exactly one asset was found)
  * @returns An error description on failure, or null on success
  */
 async function autofillNewTicket(
   ticketTabId: number,
   requesterName: string,
-  phoneNumber: string
+  phoneNumber: string,
+  laptopSerial: string = ''
 ): Promise<string | null> {
   sendWorkflowUpdate('Prepping new ticket with Standard Ticket template...');
   try {
@@ -354,7 +432,7 @@ async function autofillNewTicket(
     await TabManager.activateTab(ticketTabId);
     await TabManager.waitForTabComplete(ticketTabId);
 
-    const result = await sendAutofillWithRetry(ticketTabId, requesterName, phoneNumber);
+    const result = await sendAutofillWithRetry(ticketTabId, requesterName, phoneNumber, laptopSerial);
     if (!result.success) {
       console.error('Ticket autofill failed:', result.error);
       return result.error || 'Ticket autofill failed for an unknown reason.';
@@ -374,7 +452,8 @@ async function autofillNewTicket(
 async function sendAutofillWithRetry(
   tabId: number,
   requesterName: string,
-  phoneNumber: string
+  phoneNumber: string,
+  laptopSerial: string = ''
 ): Promise<AutofillTicketResultMessage> {
   let lastError: unknown;
   for (let attempt = 0; attempt < AUTOFILL_RETRY.attempts; attempt++) {
@@ -382,12 +461,22 @@ async function sendAutofillWithRetry(
       await delay(AUTOFILL_RETRY.delayMs);
     }
     try {
-      return await MessageService.autofillTicket(tabId, requesterName, phoneNumber);
+      return await MessageService.autofillTicket(tabId, requesterName, phoneNumber, laptopSerial);
     } catch (error) {
       lastError = error;
     }
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+/**
+ * Use case 1: check whether the calling number is the generic queue number
+ * shown when the real caller ID is unavailable
+ * Compares digits only, tolerating a leading country code
+ */
+function isDefaultPhoneNumber(phoneNumber: string): boolean {
+  const digits = phoneNumber.replace(/\D/g, '');
+  return digits === DEFAULT_PHONE_NUMBER || digits === `1${DEFAULT_PHONE_NUMBER}`;
 }
 
 /**
@@ -455,12 +544,25 @@ function sendWorkflowNoMatch(phoneNumber: string, reason: string, ticketPrepped:
 }
 
 /**
+ * Tell the sidepanel the call came in on the default queue number,
+ * so no search was attempted
+ */
+function sendWorkflowDefaultNumber(phoneNumber: string, ticketPrepped: boolean): void {
+  MessageService.sendToSidepanel<WorkflowDefaultNumberMessage>({
+    type: 'WORKFLOW_DEFAULT_NUMBER',
+    phoneNumber: phoneNumber,
+    ticketPrepped: ticketPrepped,
+  });
+}
+
+/**
  * Send workflow completion message to sidepanel
  */
-function sendWorkflowComplete(requesterData: StoredRequester): void {
+function sendWorkflowComplete(requesterData: StoredRequester, assets: AssetInfo[] = []): void {
   MessageService.sendToSidepanel<WorkflowCompleteMessage>({
     type: 'WORKFLOW_COMPLETE',
     requesterData: requesterData,
+    assets: assets,
   });
 }
 

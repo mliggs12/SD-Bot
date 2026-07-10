@@ -1,10 +1,12 @@
 import {
   ScrapeSearchResultsMessage,
   SearchResultsResultMessage,
+  ScrapeInventoryMessage,
+  InventoryResultMessage,
   AutofillTicketMessage,
   AutofillTicketResultMessage
 } from '../types';
-import { scrapeSearchResults } from '../scrapers/freshservice-scraper';
+import { scrapeSearchResults, scrapeInventoryAssets } from '../scrapers/freshservice-scraper';
 import { autofillNewTicket } from '../scrapers/ticket-form-filler';
 import { createContentMessageHandler } from '../utils/content-message-handler';
 
@@ -29,12 +31,37 @@ chrome.runtime.onMessage.addListener(
   )
 );
 
+// Scrape the Inventory section after the search tab is re-searched by requester name
+chrome.runtime.onMessage.addListener(
+  createContentMessageHandler<ScrapeInventoryMessage, InventoryResultMessage>(
+    'SCRAPE_INVENTORY',
+    () => {
+      const result = scrapeInventoryAssets();
+      return {
+        type: 'INVENTORY_RESULT',
+        success: result.found,
+        data: result,
+        error: result.found ? undefined : result.reason,
+      };
+    },
+    (errorMessage) => ({
+      type: 'INVENTORY_RESULT',
+      success: false,
+      error: errorMessage,
+    })
+  )
+);
+
 // Autofill the new ticket form when requested by the background workflow
 chrome.runtime.onMessage.addListener(
   createContentMessageHandler<AutofillTicketMessage, AutofillTicketResultMessage>(
     'AUTOFILL_TICKET',
     async (message) => {
-      const result = await autofillNewTicket(message.requesterName, message.phoneNumber);
+      const result = await autofillNewTicket(
+        message.requesterName,
+        message.phoneNumber,
+        message.laptopSerial ?? ''
+      );
       return {
         type: 'AUTOFILL_TICKET_RESULT',
         success: result.success,

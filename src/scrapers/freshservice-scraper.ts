@@ -1,4 +1,4 @@
-import { RequesterData, RequesterInfo } from '../types';
+import { AssetInfo, InventoryData, RequesterData, RequesterInfo } from '../types';
 import { FRESHSERVICE_SELECTORS } from '../utils/config';
 import { formatErrorWithStack } from '../utils/error-handler';
 
@@ -228,6 +228,83 @@ export function scrapeSearchResults(): RequesterData {
     return {
       found: false,
       reason: `Error scraping search results: ${formatErrorWithStack(error, true)}`
+    };
+  }
+}
+
+/**
+ * Scrapes the search results page for the Inventory section (shown when the
+ * search term — the requester's name — matches assets assigned to them)
+ * Returns the list of assets found under the Inventory heading
+ */
+export function scrapeInventoryAssets(): InventoryData {
+  try {
+    const searchResults = document.querySelector(FRESHSERVICE_SELECTORS.searchResultsContainer);
+    if (!searchResults) {
+      return {
+        found: false,
+        assets: [],
+        reason: `Search results container (${FRESHSERVICE_SELECTORS.searchResultsContainer}) not found. Page title: "${document.title || 'Unknown'}".`
+      };
+    }
+
+    // Locate the Inventory section by its heading, like Requesters/Tickets
+    const sections = searchResults.querySelectorAll(FRESHSERVICE_SELECTORS.sectionList);
+    let inventorySection: Element | null = null;
+    const sectionHeadings: string[] = [];
+
+    for (const section of sections) {
+      const heading = section.querySelector(FRESHSERVICE_SELECTORS.sectionHeading);
+      if (heading) {
+        const headingText = heading.textContent?.trim() || '';
+        sectionHeadings.push(headingText);
+        if (headingText.startsWith(FRESHSERVICE_SELECTORS.inventoryHeading)) {
+          inventorySection = section;
+          break;
+        }
+      }
+    }
+
+    if (!inventorySection) {
+      return {
+        found: false,
+        assets: [],
+        reason: `No Inventory section found. Found ${sections.length} section(s) with headings: ${sectionHeadings.length > 0 ? sectionHeadings.join(', ') : 'none'}`
+      };
+    }
+
+    // Prefer the result-title links; fall back to any link in the section
+    let assetLinks = Array.from(
+      inventorySection.querySelectorAll<HTMLAnchorElement>(FRESHSERVICE_SELECTORS.requesterLink)
+    );
+    if (assetLinks.length === 0) {
+      assetLinks = Array.from(inventorySection.querySelectorAll<HTMLAnchorElement>('a')).filter(
+        (link) => !link.closest(FRESHSERVICE_SELECTORS.sectionHeading)
+      );
+    }
+
+    const assets = new Map<string, AssetInfo>();
+    for (const link of assetLinks) {
+      const name = link.textContent?.trim() || '';
+      if (!name) continue;
+      const href = link.getAttribute('href') || undefined;
+      const key = href || name;
+      if (!assets.has(key)) {
+        assets.set(key, { name, url: href });
+      }
+    }
+
+    const assetList = Array.from(assets.values());
+    return {
+      found: assetList.length > 0,
+      assets: assetList,
+      reason: assetList.length === 0 ? 'Inventory section found but held no asset links.' : undefined
+    };
+  } catch (error) {
+    return {
+      found: false,
+      assets: [],
+      reason: `Error scraping inventory: ${formatErrorWithStack(error, true)}`
     };
   }
 }

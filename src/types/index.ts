@@ -4,6 +4,8 @@ export type MessageType =
   | 'CALLING_NUMBER_RESULT'
   | 'SCRAPE_SEARCH_RESULTS'
   | 'SEARCH_RESULTS_RESULT'
+  | 'SCRAPE_INVENTORY'
+  | 'INVENTORY_RESULT'
   | 'AUTOFILL_TICKET'
   | 'AUTOFILL_TICKET_RESULT'
   | 'TRIGGER_WORKFLOW'
@@ -12,6 +14,7 @@ export type MessageType =
   | 'SELECT_REQUESTER'
   | 'WORKFLOW_UPDATE'
   | 'WORKFLOW_COMPLETE'
+  | 'WORKFLOW_DEFAULT_NUMBER'
   | 'WORKFLOW_NO_MATCH'
   | 'WORKFLOW_ERROR';
 
@@ -41,12 +44,25 @@ export interface SearchResultsResultMessage extends BaseMessage {
   error?: string;
 }
 
+export interface ScrapeInventoryMessage extends BaseMessage {
+  type: 'SCRAPE_INVENTORY';
+}
+
+export interface InventoryResultMessage extends BaseMessage {
+  type: 'INVENTORY_RESULT';
+  success: boolean;
+  data?: InventoryData;
+  error?: string;
+}
+
 export interface AutofillTicketMessage extends BaseMessage {
   type: 'AUTOFILL_TICKET';
   /** Requester name for the TM Name line; empty string leaves it blank */
   requesterName: string;
-  /** Caller phone number in raw format for the Ph# line */
+  /** Caller phone number in raw format for the Ph# line; empty string leaves it blank */
   phoneNumber: string;
+  /** Asset identifier for the Laptop# line; empty string leaves it blank */
+  laptopSerial?: string;
 }
 
 export interface AutofillTicketResultMessage extends BaseMessage {
@@ -85,6 +101,15 @@ export interface WorkflowUpdateMessage extends BaseMessage {
 export interface WorkflowCompleteMessage extends BaseMessage {
   type: 'WORKFLOW_COMPLETE';
   requesterData?: StoredRequester;
+  /** Assets scraped from the requester's Inventory search results */
+  assets?: AssetInfo[];
+}
+
+export interface WorkflowDefaultNumberMessage extends BaseMessage {
+  type: 'WORKFLOW_DEFAULT_NUMBER';
+  phoneNumber: string;
+  /** False when the new ticket could not be prepped with the template */
+  ticketPrepped: boolean;
 }
 
 export interface WorkflowNoMatchMessage extends BaseMessage {
@@ -106,6 +131,8 @@ export type Message =
   | CallingNumberResultMessage
   | ScrapeSearchResultsMessage
   | SearchResultsResultMessage
+  | ScrapeInventoryMessage
+  | InventoryResultMessage
   | AutofillTicketMessage
   | AutofillTicketResultMessage
   | TriggerWorkflowMessage
@@ -114,6 +141,7 @@ export type Message =
   | SelectRequesterMessage
   | WorkflowUpdateMessage
   | WorkflowCompleteMessage
+  | WorkflowDefaultNumberMessage
   | WorkflowNoMatchMessage
   | WorkflowErrorMessage;
 
@@ -127,6 +155,17 @@ export interface CallingNumberResult {
 export interface RequesterInfo {
   name: string;
   userId: string;
+}
+
+export interface AssetInfo {
+  name: string;
+  url?: string;
+}
+
+export interface InventoryData {
+  found: boolean;
+  assets: AssetInfo[];
+  reason?: string;
 }
 
 export interface RequesterData {
@@ -171,6 +210,8 @@ export interface StoredRequester {
 export interface PendingSelection {
   phoneNumber: string;
   ticketTabId: number;
+  /** Search tab reused for the follow-up inventory (asset) search */
+  searchTabId: number;
   requesters: RequesterInfo[];
   source?: 'requesters' | 'tickets';
   timestamp: number;

@@ -108,6 +108,54 @@ export class TabManager {
   }
 
   /**
+   * Navigate an existing tab to a new URL and wait for it to finish loading
+   * Resolves (with a console warning) on timeout rather than rejecting
+   * @param tabId - The tab to navigate
+   * @param url - URL to navigate to
+   * @param timeout - Maximum load wait in milliseconds (default: TIMEOUTS.tabLoad)
+   */
+  static async navigateAndWait(
+    tabId: number,
+    url: string,
+    timeout: number = TIMEOUTS.tabLoad
+  ): Promise<void> {
+    await chrome.tabs.update(tabId, { url });
+
+    await new Promise<void>((resolve) => {
+      const listener = (updatedTabId: number, changeInfo: { status?: string }) => {
+        if (updatedTabId === tabId && changeInfo.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(listener);
+          clearTimeout(timeoutId);
+          resolve();
+        }
+      };
+
+      chrome.tabs.onUpdated.addListener(listener);
+
+      const timeoutId = setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        console.warn(`Tab navigation timeout after ${timeout}ms for URL: ${url}. Resolving anyway.`);
+        resolve();
+      }, timeout);
+    });
+
+    // Small additional delay to ensure content is rendered
+    await new Promise<void>((resolve) => setTimeout(resolve, TIMEOUTS.contentRender));
+  }
+
+  /**
+   * Close a tab, ignoring errors if it is already gone
+   * @param tabId - The tab to close
+   */
+  static async closeTab(tabId: number): Promise<void> {
+    try {
+      await chrome.tabs.remove(tabId);
+    } catch (error) {
+      console.warn(`Could not close tab ${tabId}:`, error);
+    }
+  }
+
+  /**
    * Bring an existing tab to the foreground, including focusing its window
    * Hidden tabs are deprioritized by Chrome (requestAnimationFrame never fires,
    * timers are throttled), which can keep SPA pages from rendering or updating,
