@@ -360,7 +360,10 @@ const phoneNumber = result.phoneNumber;
 
 The workflow executes when the user clicks the extension icon. The new ticket
 tab is opened right after the calling number is identified (before the search),
-and its tab ID is kept so the autofill step can message it later.
+and its tab ID is kept so the autofill step can message it later. The
+requester's profile tab (Step 5) is opened and awaited *before* autofill
+(Step 6) — rather than fire-and-forget at the end — so any assigned laptop
+found there can be included in the same autofill pass.
 
 Two tabs are deliberately brought to the foreground during the workflow,
 because Chrome deprioritizes hidden tabs/windows (requestAnimationFrame never
@@ -370,6 +373,10 @@ fires, timers are throttled), which can prevent SPA pages from rendering:
   calling number — the MAX window is often buried when a call comes in
 - The **new ticket tab** is activated before autofill so the Ember form
   actually renders; it is also where the tech works next
+
+The requester profile tab is *not* activated — its Assets tab content is
+rendered server-side into the initial page HTML (not fetched via AJAX on tab
+click), so it can be scraped from a background tab without needing to render.
 
 **Step 1: Find RingCentral MAX Tab**
 ```typescript
@@ -427,14 +434,42 @@ async function processSearchResults(
 }
 ```
 
-**Step 5: Autofill New Ticket**
+**Step 5: Open Requester Profile Tab & Look Up Assigned Assets**
+```typescript
+// Only runs when a unique requester was identified — there's no profile
+// page to check otherwise
+if (requesterData) {
+  const profileTab = await openRequesterProfileTab(requesterData);
+  const assetLookup = await lookupRequesterAssets(profileTab.id!, requesterData.requesterName);
+  requesterData = { ...requesterData, ...assetLookup };
+}
+```
+`openRequesterProfileTab` opens the requester's FreshService profile page and
+*waits* for it to load (`TabManager.createTabAndWait`, not fire-and-forget as
+in earlier versions). `lookupRequesterAssets` then sends a
+`GET_REQUESTER_ASSETS` message to the FreshService content script in that tab
+(with retries while the content script loads), which scrapes the Assets tab's
+assignment list — see [asset-scraper.ts](src/scrapers/asset-scraper.ts).
+
+The result determines `laptopNumber`/`assetTags` on `requesterData`:
+- **Exactly one asset** → `laptopNumber` is set to its asset tag (used to fill
+  the ticket's Laptop# line in Step 6)
+- **Zero or multiple assets** → `laptopNumber` stays unset (Laptop# line left
+  blank for manual entry); `assetTags` holds whatever was found either way, so
+  the side panel can list multiple candidates for the tech to confirm with the
+  caller
+- **Lookup failure** (page didn't load, scraper error) → logged to the console
+  and treated the same as zero assets; non-fatal, does not abort the workflow
+
+**Step 6: Autofill New Ticket**
 ```typescript
 // Runs even when the requester was NOT uniquely identified —
-// TM Name is simply left blank in that case
+// TM Name and Laptop# are simply left blank in that case
 const autofillError = await autofillNewTicket(
   ticketTab.id!,
   requesterData?.requesterName ?? '',
-  phoneNumber
+  phoneNumber,
+  requesterData?.laptopNumber ?? ''
 );
 ```
 The background sends an `AUTOFILL_TICKET` message to the FreshService content
@@ -445,20 +480,10 @@ description to:
 ```
 TM Name: <requester name>
 Ph#: <phone number>
-Laptop#:
+Laptop#: <asset tag, if exactly one was found>
 ```
 
 Autofill failures are reported to the side panel but do not abort the workflow.
-
-**Step 6: Open Requester Profile Tab**
-```typescript
-async function openRequesterProfileTab(requesterData: StoredRequester): Promise<void> {
-  await TabManager.createTab(
-    FRESHSERVICE_USER_PROFILE_URL(requesterData.requesterUserId),
-    false
-  );
-}
-```
 
 ### Data Flow
 
@@ -483,11 +508,17 @@ User Click → Background Service Worker
                     ↓
          Store requester data in Chrome Storage
                     ↓
+         Open + wait for Requester Profile Tab
+                    ↓
+         Send GET_REQUESTER_ASSETS message → FreshService Content Script (profile tab)
+                    ↓                              ↓
+         Wait for response              Run scraper, return result
+                    ↓                              ↓
+         Receive RequesterAssetsResultMessage ←────┘
+                    ↓
          Send AUTOFILL_TICKET message → FreshService Content Script (ticket tab)
                     ↓                              ↓
          Wait for response          Apply template, rewrite description
-                    ↓
-         Open user profile tab
                     ↓
          Send WORKFLOW_COMPLETE message → Side Panel
 ```
@@ -505,6 +536,9 @@ interface StoredRequester {
   requesterUserId: string;
   phoneNumber: string;
   timestamp: number;
+  source?: 'requesters' | 'tickets';
+  laptopNumber?: string; // Asset tag, set only when exactly one asset was found
+  assetTags?: string[]; // All asset tags found (0, 1, or many)
 }
 ```
 
@@ -514,6 +548,9 @@ interface StoredRequester {
 - If requester not found → Open new ticket tab for manual work
 - If multiple requesters found → Show count, open new ticket tab
 - If scraping fails → Display detailed error with context
+- If asset lookup fails or finds zero/multiple assets → Leave the ticket's
+  Laptop# blank; multiple asset tags are still surfaced in the side panel so
+  the tech can confirm the right one with the caller
 
 **Error propagation**:
 ```typescript
@@ -1348,7 +1385,15 @@ const element =
 
 ## Version History
 
-**Current Version**: 1.6.5
+**Current Version**: 1.6.6
+
+**Recent Changes (1.6.6)**:
+- Added laptop asset lookup: after a unique requester is identified, their FreshService profile's Assets tab is scraped for assigned hardware and the asset tag is used to fill the ticket's Laptop# line
+- The requester profile tab is now opened and awaited *before* ticket autofill (previously fire-and-forget at the end) so the lookup can complete in time for the single autofill pass
+- When zero or multiple assets are found, Laptop# is left blank for manual entry; multiple asset tags are surfaced in the side panel (amber warning + the previously-unused "Laptop #" field) so the tech can confirm the right one with the caller
+- Added `src/scrapers/asset-scraper.ts`, `GET_REQUESTER_ASSETS`/`REQUESTER_ASSETS_RESULT` message types, and `MessageService.getRequesterAssets`
+- `AUTOFILL_TICKET` and `autofillNewTicket` now take a `laptopNumber` parameter alongside requester name and phone
+- New DOM captures in `dom-captures/`: `requester-assets-tab-trigger.html`, `requester-assets-list.html`, `requester-assets-empty.html`
 
 **Recent Changes (1.6.5)**:
 - Toolbar icon shows an amber TEST badge while test mode is enabled (synced from storage on service-worker start and via `chrome.storage.onChanged`) — the state is visible without opening the side panel

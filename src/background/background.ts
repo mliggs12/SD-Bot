@@ -11,6 +11,7 @@ import {
   CallingNumberResultMessage,
   SearchResultsResultMessage,
   AutofillTicketResultMessage,
+  RequesterAssetsResultMessage,
   isSuccessfulCallingNumberResult,
   isSuccessfulSingleMatchResult,
   isMultipleRequestersResult
@@ -25,6 +26,7 @@ import {
   FRESHSERVICE_USER_PROFILE_URL,
   AUTOFILL_RETRY,
   CALLING_NUMBER_RETRY,
+  ASSET_LOOKUP_RETRY,
   STORAGE_KEYS
 } from '../utils/config';
 import { formatErrorWithStack } from '../utils/error-handler';
@@ -121,18 +123,26 @@ async function handleWorkflow(): Promise<void> {
       searchError = error;
     }
 
-    // TM Name is left blank when no unique requester was found
+    // Only a uniquely identified requester has a profile page to check; the
+    // profile tab is opened (and awaited) here rather than at the end so its
+    // assigned laptop, if any, can be included in the single autofill pass below
+    if (requesterData) {
+      const profileTab = await openRequesterProfileTab(requesterData);
+      const assetLookup = await lookupRequesterAssets(profileTab.id!, requesterData.requesterName);
+      requesterData = { ...requesterData, ...assetLookup };
+    }
+
+    // TM Name and Laptop# are left blank when not uniquely determined
     const autofillError = await autofillNewTicket(
       ticketTab.id!,
       requesterData?.requesterName ?? '',
-      phoneNumber
+      phoneNumber,
+      requesterData?.laptopNumber ?? ''
     );
 
     if (searchError !== undefined || !requesterData) {
       throw searchError;
     }
-
-    await openRequesterProfileTab(requesterData);
 
     if (autofillError) {
       sendWorkflowError(
@@ -265,17 +275,19 @@ async function processSearchResults(
 }
 
 /**
- * Step 5: Autofill the new ticket with the Standard Ticket template and caller details
+ * Step 6: Autofill the new ticket with the Standard Ticket template and caller details
  * Failures are reported without aborting the workflow — the opened tabs are still useful
  * @param ticketTabId - The tab ID of the new ticket tab opened at workflow start
  * @param requesterName - Requester name ('' when not uniquely identified)
  * @param phoneNumber - The caller's phone number
+ * @param laptopNumber - Asset tag for the Laptop# line ('' when none or multiple were found)
  * @returns An error description on failure, or null on success
  */
 async function autofillNewTicket(
   ticketTabId: number,
   requesterName: string,
-  phoneNumber: string
+  phoneNumber: string,
+  laptopNumber: string
 ): Promise<string | null> {
   sendWorkflowUpdate('Prepping new ticket with Standard Ticket template...');
   try {
@@ -284,7 +296,7 @@ async function autofillNewTicket(
     await TabManager.activateTab(ticketTabId);
     await TabManager.waitForTabComplete(ticketTabId);
 
-    const result = await sendAutofillWithRetry(ticketTabId, requesterName, phoneNumber);
+    const result = await sendAutofillWithRetry(ticketTabId, requesterName, phoneNumber, laptopNumber);
     if (!result.success) {
       console.error('Ticket autofill failed:', result.error);
       return result.error || 'Ticket autofill failed for an unknown reason.';
@@ -304,7 +316,8 @@ async function autofillNewTicket(
 async function sendAutofillWithRetry(
   tabId: number,
   requesterName: string,
-  phoneNumber: string
+  phoneNumber: string,
+  laptopNumber: string
 ): Promise<AutofillTicketResultMessage> {
   let lastError: unknown;
   for (let attempt = 0; attempt < AUTOFILL_RETRY.attempts; attempt++) {
@@ -312,7 +325,7 @@ async function sendAutofillWithRetry(
       await delay(AUTOFILL_RETRY.delayMs);
     }
     try {
-      return await MessageService.autofillTicket(tabId, requesterName, phoneNumber);
+      return await MessageService.autofillTicket(tabId, requesterName, phoneNumber, laptopNumber);
     } catch (error) {
       lastError = error;
     }
@@ -338,11 +351,66 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * Step 6: Open user profile tab for identified requester
+ * Step 5a: Open the identified requester's profile tab and wait for it to
+ * load — needed (rather than fire-and-forget) so its Assets tab content can
+ * be scraped for an assigned laptop before the ticket is autofilled
  * @param requesterData - The requester data containing user ID
+ * @returns The opened profile tab
  */
-async function openRequesterProfileTab(requesterData: StoredRequester): Promise<void> {
-  await TabManager.createTab(FRESHSERVICE_USER_PROFILE_URL(requesterData.requesterUserId), false);
+async function openRequesterProfileTab(requesterData: StoredRequester): Promise<chrome.tabs.Tab> {
+  return TabManager.createTabAndWait(FRESHSERVICE_USER_PROFILE_URL(requesterData.requesterUserId), false);
+}
+
+/**
+ * Step 5b: Look up assets assigned to the requester from their (already open)
+ * profile tab. Non-fatal: lookup failures are logged and leave laptopNumber/
+ * assetTags unset rather than aborting the workflow, since a blank Laptop#
+ * line was already the pre-existing behavior for manual fill-in
+ * @param profileTabId - The tab ID of the requester's profile page
+ * @param requesterName - Used only for the status message shown while looking up
+ * @returns laptopNumber (set only when exactly one asset was found) and
+ *   assetTags (all asset tags found, for the sidepanel to surface when there
+ *   are multiple, so the tech can confirm the right one with the caller)
+ */
+async function lookupRequesterAssets(
+  profileTabId: number,
+  requesterName: string
+): Promise<Pick<StoredRequester, 'laptopNumber' | 'assetTags'>> {
+  sendWorkflowUpdate(`Checking assigned assets for ${requesterName}...`);
+  try {
+    const result = await fetchAssetsWithRetry(profileTabId);
+    if (!result.success || !result.data) {
+      console.error('Asset lookup failed:', result.error);
+      return {};
+    }
+    const assetTags = result.data.assets.map((asset) => asset.assetTag);
+    return {
+      assetTags,
+      laptopNumber: assetTags.length === 1 ? assetTags[0] : undefined,
+    };
+  } catch (error) {
+    console.error('Asset lookup failed:', formatErrorWithStack(error, true));
+    return {};
+  }
+}
+
+/**
+ * Sends the asset lookup message, retrying while the profile tab's content
+ * script may still be loading (the tab was just created)
+ */
+async function fetchAssetsWithRetry(tabId: number): Promise<RequesterAssetsResultMessage> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < ASSET_LOOKUP_RETRY.attempts; attempt++) {
+    if (attempt > 0) {
+      await delay(ASSET_LOOKUP_RETRY.delayMs);
+    }
+    try {
+      return await MessageService.getRequesterAssets(tabId);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 /**

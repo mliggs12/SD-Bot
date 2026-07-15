@@ -5,7 +5,9 @@ import {
   GetCallingNumberMessage,
   ScrapeSearchResultsMessage,
   AutofillTicketMessage,
-  AutofillTicketResultMessage
+  AutofillTicketResultMessage,
+  GetRequesterAssetsMessage,
+  RequesterAssetsResultMessage
 } from '../types';
 
 /**
@@ -108,20 +110,36 @@ export class MessageService {
    * @param tabId - The ID of the tab containing the new ticket form
    * @param requesterName - Requester name for the TM Name line ('' leaves it blank)
    * @param phoneNumber - Caller phone number for the Ph# line
+   * @param laptopNumber - Asset tag for the Laptop# line ('' leaves it blank)
    * @returns Promise that resolves with the autofill result
    * @throws Error if the message cannot be sent or if no response is received
    */
   static async autofillTicket(
     tabId: number,
     requesterName: string,
-    phoneNumber: string
+    phoneNumber: string,
+    laptopNumber: string
   ): Promise<AutofillTicketResultMessage> {
     const request: AutofillTicketMessage = {
       type: 'AUTOFILL_TICKET',
       requesterName,
       phoneNumber,
+      laptopNumber,
     };
     return this.sendToTab<AutofillTicketResultMessage>(tabId, request);
+  }
+
+  /**
+   * Request assigned-assets scraping from the FreshService content script
+   * @param tabId - The ID of the tab containing the requester's profile page
+   * @returns Promise that resolves with the requester's assets
+   * @throws Error if the message cannot be sent or if no response is received
+   */
+  static async getRequesterAssets(tabId: number): Promise<RequesterAssetsResultMessage> {
+    const request: GetRequesterAssetsMessage = {
+      type: 'GET_REQUESTER_ASSETS',
+    };
+    return this.sendToTab<RequesterAssetsResultMessage>(tabId, request);
   }
 
   /**

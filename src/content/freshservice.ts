@@ -2,10 +2,13 @@ import {
   ScrapeSearchResultsMessage,
   SearchResultsResultMessage,
   AutofillTicketMessage,
-  AutofillTicketResultMessage
+  AutofillTicketResultMessage,
+  GetRequesterAssetsMessage,
+  RequesterAssetsResultMessage
 } from '../types';
 import { scrapeSearchResults } from '../scrapers/freshservice-scraper';
 import { autofillNewTicket } from '../scrapers/ticket-form-filler';
+import { scrapeRequesterAssets } from '../scrapers/asset-scraper';
 import { createContentMessageHandler } from '../utils/content-message-handler';
 
 // Always log on load so any FreshService tab's console proves which build is
@@ -38,7 +41,7 @@ chrome.runtime.onMessage.addListener(
   createContentMessageHandler<AutofillTicketMessage, AutofillTicketResultMessage>(
     'AUTOFILL_TICKET',
     async (message) => {
-      const result = await autofillNewTicket(message.requesterName, message.phoneNumber);
+      const result = await autofillNewTicket(message.requesterName, message.phoneNumber, message.laptopNumber);
       return {
         type: 'AUTOFILL_TICKET_RESULT',
         success: result.success,
@@ -47,6 +50,28 @@ chrome.runtime.onMessage.addListener(
     },
     (errorMessage) => ({
       type: 'AUTOFILL_TICKET_RESULT',
+      success: false,
+      error: errorMessage,
+    })
+  )
+);
+
+// Scrape assigned assets when requested by the background workflow (sent to
+// the requester profile tab it opens after a unique requester is identified)
+chrome.runtime.onMessage.addListener(
+  createContentMessageHandler<GetRequesterAssetsMessage, RequesterAssetsResultMessage>(
+    'GET_REQUESTER_ASSETS',
+    () => {
+      const result = scrapeRequesterAssets();
+      return {
+        type: 'REQUESTER_ASSETS_RESULT',
+        success: result.success,
+        data: result,
+        error: result.success ? undefined : result.error,
+      };
+    },
+    (errorMessage) => ({
+      type: 'REQUESTER_ASSETS_RESULT',
       success: false,
       error: errorMessage,
     })
