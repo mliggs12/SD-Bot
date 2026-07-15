@@ -734,26 +734,22 @@ All components use `console.log`, `console.error` for logging. Check appropriate
 
 ### Test Mode Configuration
 
-Located in [src/utils/config.ts](src/utils/config.ts):
+Test mode is a **runtime setting** controlled from the sidepanel — no code
+change, rebuild, or extension reload required:
 
-```typescript
-// WARNING: TEST_MODE should be 'false' in production builds!
-export const TEST_MODE = false;
-export const TEST_PHONE_NUMBER = '7207579434';
-```
+- The sidepanel has a "Test mode (skip MAX call detection)" checkbox and an
+  editable test phone number field
+- Settings persist in `chrome.storage.local` (`STORAGE_KEYS.testModeSettings`)
+  and are read by the background script at the start of every workflow run
+- When enabled, the workflow skips the RingCentral steps entirely and uses the
+  configured number — no active call or MAX tab needed
+- The section highlights yellow while enabled so it isn't left on by accident,
+  and the workflow status shows "Test Mode: Using <number>..."
+- `DEFAULT_TEST_PHONE_NUMBER` in [src/utils/config.ts](src/utils/config.ts) is
+  only the default seeded into the field
 
-**When TEST_MODE = true**:
-- Skips finding RingCentral tab
-- Uses static TEST_PHONE_NUMBER instead of extracting from call
-- Useful for testing FreshService integration without active call
-
-**For development**:
-1. Set `TEST_MODE = true` in config.ts
-2. Rebuild: `npm run build`
-3. Reload extension in Chrome
-4. Test workflow without needing active RingCentral call
-
-**IMPORTANT**: Always set `TEST_MODE = false` before production deployment!
+The sidepanel also has a **"Run workflow" button** to re-run on demand without
+closing and reopening the panel.
 
 ---
 
@@ -832,22 +828,23 @@ If UI changes break scraping:
 
 ### Test Mode Setup
 
-1. Set `TEST_MODE = true` in [src/utils/config.ts](src/utils/config.ts)
-2. Optionally update `TEST_PHONE_NUMBER` to test with different number
-3. Run `npm run build`
-4. Reload extension in Chrome
+1. Open the sidepanel (click extension icon)
+2. Check "Test mode (skip MAX call detection)"
+3. Enter/adjust the test phone number in the field
+4. Click "Run workflow"
+
+No rebuild or reload needed — settings take effect on the next run.
 
 ### Manual Testing Workflow
 
 **With Test Mode** (recommended for development):
-1. Enable test mode
-2. Rebuild and reload extension
-3. Click extension icon
-4. Verify it:
+1. Enable test mode in the sidepanel and set a test number
+2. Click "Run workflow"
+3. Verify it:
    - Skips RingCentral tab search
-   - Uses test phone number
+   - Uses the configured test phone number
    - Searches FreshService
-   - Shows results in side panel
+   - Preps the new ticket and shows results in side panel
 
 **Without Test Mode** (integration testing):
 1. Open RingCentral MAX tab
@@ -1318,7 +1315,12 @@ const element =
 
 ## Version History
 
-**Current Version**: 1.6.2
+**Current Version**: 1.6.3
+
+**Recent Changes (1.6.3)**:
+- Test mode is now a runtime setting in the sidepanel (checkbox + editable phone number, persisted in chrome.storage.local) instead of a compile-time constant — toggling no longer requires editing config.ts, rebuilding, or reloading
+- Added "Run workflow" button to the sidepanel to re-run on demand
+- Removed `TEST_MODE`/`TEST_PHONE_NUMBER` constants (replaced by `DEFAULT_TEST_PHONE_NUMBER` seed and `StorageService.get/setTestModeSettings`)
 
 **Recent Changes (1.6.2)**:
 - Build timestamp (`__BUILD_INFO__`, injected by webpack DefinePlugin) shown in the sidepanel footer and logged by the FreshService content script on load — makes a stale `dist/` build immediately visible

@@ -126,6 +126,16 @@ export interface TicketAutofillResult {
 }
 
 // Storage types
+
+/**
+ * Runtime test mode settings, toggled from the sidepanel
+ * When enabled, the workflow skips MAX call detection and uses phoneNumber
+ */
+export interface TestModeSettings {
+  enabled: boolean;
+  phoneNumber: string;
+}
+
 export interface StoredRequester {
   requesterName: string;
   requesterUserId: string;

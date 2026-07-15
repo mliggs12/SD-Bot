@@ -24,9 +24,7 @@ import {
   FRESHSERVICE_NEW_TICKET_URL,
   FRESHSERVICE_USER_PROFILE_URL,
   AUTOFILL_RETRY,
-  CALLING_NUMBER_RETRY,
-  TEST_MODE,
-  TEST_PHONE_NUMBER
+  CALLING_NUMBER_RETRY
 } from '../utils/config';
 import { formatErrorWithStack } from '../utils/error-handler';
 
@@ -66,11 +64,17 @@ async function handleWorkflow(): Promise<void> {
   try {
     let phoneNumber: string;
 
-    if (TEST_MODE) {
-      // Test mode: use static phone number, skip RingCentral steps
-      phoneNumber = TEST_PHONE_NUMBER;
+    // Test mode is a runtime setting toggled from the sidepanel
+    const testSettings = await StorageService.getTestModeSettings();
+
+    if (testSettings.enabled) {
+      // Test mode: use the configured phone number, skip RingCentral steps
+      phoneNumber = testSettings.phoneNumber.trim();
+      if (!phoneNumber) {
+        throw new Error('Test mode is enabled but no test phone number is set. Enter one in the sidepanel.');
+      }
       sendPhoneNumberIdentified(phoneNumber);
-      sendWorkflowUpdate(`Test Mode: Using static number ${phoneNumber}. Searching FreshService...`);
+      sendWorkflowUpdate(`Test Mode: Using ${phoneNumber} (no call detection). Searching FreshService...`);
     } else {
       // Normal mode: find RingCentral tab and extract calling number
       const maxTab = await findRingCentralTab();
