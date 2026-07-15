@@ -24,13 +24,37 @@ import {
   FRESHSERVICE_NEW_TICKET_URL,
   FRESHSERVICE_USER_PROFILE_URL,
   AUTOFILL_RETRY,
-  CALLING_NUMBER_RETRY
+  CALLING_NUMBER_RETRY,
+  STORAGE_KEYS
 } from '../utils/config';
 import { formatErrorWithStack } from '../utils/error-handler';
 
 // Handle action button click to open side panel
 chrome.action.onClicked.addListener(async (tab) => {
   await chrome.sidePanel.open({ windowId: tab.windowId });
+});
+
+/**
+ * Show a TEST badge on the toolbar icon whenever test mode is enabled, so the
+ * state is visible even when the side panel is closed — a run in test mode
+ * uses the configured number instead of detecting the live call
+ */
+async function updateTestModeBadge(): Promise<void> {
+  const settings = await StorageService.getTestModeSettings();
+  await chrome.action.setBadgeText({ text: settings.enabled ? 'TEST' : '' });
+  if (settings.enabled) {
+    await chrome.action.setBadgeBackgroundColor({ color: '#FFC107' });
+    await chrome.action.setBadgeTextColor({ color: '#000000' });
+  }
+}
+
+// Re-assert the badge on every service worker start, and flip it the instant
+// the sidepanel toggle changes the stored settings
+updateTestModeBadge().catch((error) => console.error('Failed to update test mode badge:', error));
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes[STORAGE_KEYS.testModeSettings]) {
+    updateTestModeBadge().catch((error) => console.error('Failed to update test mode badge:', error));
+  }
 });
 
 // Listen for messages from sidepanel

@@ -771,6 +771,19 @@ change, rebuild, or extension reload required:
 The sidepanel also has a **"Run workflow" button** to re-run on demand without
 closing and reopening the panel.
 
+While test mode is enabled, the extension's toolbar icon shows an amber
+**TEST** badge — visible even with the side panel closed, so it can't be left
+on silently during a real call.
+
+**Design note (deliberate decision — do not "simplify" back to a constant)**:
+test mode is a runtime setting rather than a compile-time constant because of
+the pull-to-deploy model (`dist/` is committed; the user updates via `git pull`
+and does not run npm). A compile-time flag would require edit → build → reload
+for every toggle, and a build accidentally made with the flag on could be
+committed and shipped via `git pull`, producing an extension that silently
+ignores real calls. The runtime flag needs no toolchain and defaults off in
+storage, so a pull can never enable it.
+
 ---
 
 ## Configuration & Environment
@@ -1335,7 +1348,11 @@ const element =
 
 ## Version History
 
-**Current Version**: 1.6.4
+**Current Version**: 1.6.5
+
+**Recent Changes (1.6.5)**:
+- Toolbar icon shows an amber TEST badge while test mode is enabled (synced from storage on service-worker start and via `chrome.storage.onChanged`) — the state is visible without opening the side panel
+- Documented the design decision to keep test mode as a runtime setting (see Test Mode Configuration)
 
 **Recent Changes (1.6.4)**:
 - `dist/` is now committed (removed from .gitignore) so `git pull` delivers a ready-to-load build — the deployment model is: pull, then reload the unpacked extension; no local npm build required
