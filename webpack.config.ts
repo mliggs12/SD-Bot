@@ -49,7 +49,30 @@ const config = (env: unknown, argv: { mode?: string }): webpack.Configuration =>
       }),
       new CopyWebpackPlugin({
         patterns: [
-          { from: 'manifest.json', to: 'manifest.json' },
+          {
+            from: 'manifest.json',
+            to: 'manifest.json',
+            // The root manifest's paths are relative to the repo root (so the
+            // root folder is loadable as an unpacked extension). Strip the
+            // dist/ prefix in the copy so dist/ is ALSO a valid standalone
+            // unpacked extension.
+            transform: (content: Buffer): string => {
+              const manifest = JSON.parse(content.toString()) as {
+                icons: Record<string, string>;
+                background: { service_worker: string };
+                side_panel: { default_path: string };
+                content_scripts: Array<{ js: string[] }>;
+              };
+              const strip = (p: string): string => p.replace(/^dist\//, '');
+              manifest.icons['128'] = strip(manifest.icons['128']);
+              manifest.background.service_worker = strip(manifest.background.service_worker);
+              manifest.side_panel.default_path = strip(manifest.side_panel.default_path);
+              for (const contentScript of manifest.content_scripts) {
+                contentScript.js = contentScript.js.map(strip);
+              }
+              return JSON.stringify(manifest, null, 2);
+            },
+          },
           { from: 'src/sidepanel/sidepanel.html', to: 'sidepanel/sidepanel.html' },
           { from: 'src/images', to: 'images' },
         ],

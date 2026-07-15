@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 16px;
+      margin: 0;
+    }
+    #requester-info {
+      margin-bottom: 16px;
+      padding: 12px;
+      background: #f5f5f5;
+      border-radius: 4px;
+    }
+    #requester-info p {
+      margin: 8px 0;
+    }
+    #result {
+      padding: 12px;
+      border-radius: 4px;
+      margin-top: 16px;
+    }
+    .success {
+      background: #d4edda;
+      border-left: 4px solid #28a745;
+      color: #155724;
+    }
+    .error {
+      background: #f8d7da;
+      border-left: 4px solid #dc3545;
+      color: #721c24;
+    }
+    #build-info {
+      margin-top: 16px;
+      font-size: 11px;
+      color: #999;
+    }
+    #run-workflow {
+      margin-top: 12px;
+      padding: 6px 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #f5f5f5;
+      cursor: pointer;
+    }
+    #run-workflow:hover {
+      background: #e8e8e8;
+    }
+    #test-mode-section {
+      margin-top: 16px;
+      padding: 10px 12px;
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #test-mode-section.active {
+      background: #fff8e1;
+      border-color: #ffca28;
+    }
+    #test-mode-section label {
+      display: block;
+      cursor: pointer;
+    }
+    #test-phone {
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 6px;
+      padding: 4px 6px;
+    }
+    #test-phone:disabled {
+      background: #eee;
+      color: #999;
+    }
+  </style>
+</head>
+<body>
+  <div id="requester-info">
+    <p>Name: <span id="requester-name"></span></p>
+    <p>Phone: <span id="phone-number"></span></p>
+    <p>Laptop Serial: <span id="laptop-serial"></span></p>
+  </div>
+  
+  <div id="result"></div>
+
+  <button id="run-workflow">Run workflow</button>
+
+  <div id="test-mode-section">
+    <label>
+      <input type="checkbox" id="test-mode-toggle">
+      Test mode (skip MAX call detection)
+    </label>
+    <input type="text" id="test-phone" placeholder="Test phone number">
+  </div>
+
+  <div id="build-info"></div>
+
+  <script src="../sidepanel.js"></script>
+</body>
+</html>
