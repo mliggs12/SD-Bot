@@ -1318,7 +1318,13 @@ const element =
 
 ## Version History
 
-**Current Version**: 1.6.1
+**Current Version**: 1.6.2
+
+**Recent Changes (1.6.2)**:
+- Build timestamp (`__BUILD_INFO__`, injected by webpack DefinePlugin) shown in the sidepanel footer and logged by the FreshService content script on load — makes a stale `dist/` build immediately visible
+- Autofill failures now include a page-state snapshot (trigger/editor found, option count, title, URL) in the reported error
+- "Receiving end does not exist" autofill errors now include the ticket tab's status/discarded/url
+- New ticket form render wait raised from 15s to 30s
 
 **Recent Changes (1.6.1)**:
 - MAX tab is now activated (tab + window focus) before number extraction, with retries while the call UI renders — fixes extraction failing when the MAX window is buried behind others

@@ -60,7 +60,7 @@ export const TICKET_TEMPLATE = {
 export const TIMEOUTS = {
   tabLoad: 10000, // 10 seconds for tab to load
   contentRender: 500, // 500ms additional delay for content rendering
-  ticketFormLoad: 15000, // new ticket form (Ember SPA) render wait
+  ticketFormLoad: 30000, // new ticket form (Ember SPA) render wait
   dropdownOpen: 3000, // first wait for options after opening the template dropdown
   templateApply: 10000, // wait for template content to populate the editor
   domPoll: 200, // polling interval for DOM waits

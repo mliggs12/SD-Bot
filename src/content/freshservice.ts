@@ -8,6 +8,10 @@ import { scrapeSearchResults } from '../scrapers/freshservice-scraper';
 import { autofillNewTicket } from '../scrapers/ticket-form-filler';
 import { createContentMessageHandler } from '../utils/content-message-handler';
 
+// Always log on load so any FreshService tab's console proves which build is
+// running and that the content script was injected at all
+console.log(`[SD-Bot] FreshService content script loaded (build ${__BUILD_INFO__}) on ${location.href}`);
+
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener(
   createContentMessageHandler<ScrapeSearchResultsMessage, SearchResultsResultMessage>(
