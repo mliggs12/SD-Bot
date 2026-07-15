@@ -6,6 +6,8 @@ export type MessageType =
   | 'SEARCH_RESULTS_RESULT'
   | 'AUTOFILL_TICKET'
   | 'AUTOFILL_TICKET_RESULT'
+  | 'GET_REQUESTER_ASSETS'
+  | 'REQUESTER_ASSETS_RESULT'
   | 'TRIGGER_WORKFLOW'
   | 'PHONE_NUMBER_IDENTIFIED'
   | 'WORKFLOW_UPDATE'
@@ -44,11 +46,24 @@ export interface AutofillTicketMessage extends BaseMessage {
   requesterName: string;
   /** Caller phone number in raw format for the Ph# line */
   phoneNumber: string;
+  /** Asset tag for the Laptop# line; empty string leaves it blank (none or multiple found) */
+  laptopNumber: string;
 }
 
 export interface AutofillTicketResultMessage extends BaseMessage {
   type: 'AUTOFILL_TICKET_RESULT';
   success: boolean;
+  error?: string;
+}
+
+export interface GetRequesterAssetsMessage extends BaseMessage {
+  type: 'GET_REQUESTER_ASSETS';
+}
+
+export interface RequesterAssetsResultMessage extends BaseMessage {
+  type: 'REQUESTER_ASSETS_RESULT';
+  success: boolean;
+  data?: RequesterAssetsData;
   error?: string;
 }
 
@@ -85,6 +100,8 @@ export type Message =
   | SearchResultsResultMessage
   | AutofillTicketMessage
   | AutofillTicketResultMessage
+  | GetRequesterAssetsMessage
+  | RequesterAssetsResultMessage
   | TriggerWorkflowMessage
   | PhoneNumberIdentifiedMessage
   | WorkflowUpdateMessage
@@ -120,6 +137,17 @@ export interface ScrapeResult<T> {
   error?: string;
 }
 
+export interface AssetInfo {
+  assetTag: string;
+  assetId: string;
+}
+
+export interface RequesterAssetsData {
+  success: boolean;
+  assets: AssetInfo[];
+  error?: string;
+}
+
 export interface TicketAutofillResult {
   success: boolean;
   error?: string;
@@ -142,6 +170,8 @@ export interface StoredRequester {
   phoneNumber: string;
   timestamp: number;
   source?: 'requesters' | 'tickets'; // Where the requester was found
+  laptopNumber?: string; // Asset tag, set only when exactly one asset was found
+  assetTags?: string[]; // All asset tags found on the requester's profile (0, 1, or many)
 }
 
 // Error types

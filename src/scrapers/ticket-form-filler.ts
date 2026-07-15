@@ -195,18 +195,24 @@ function buildDiagnostics(): string {
  * @param requesterName - Requester name; empty string leaves TM Name blank
  *   (used when no unique requester was identified)
  * @param phoneNumber - Caller phone number in raw format
+ * @param laptopNumber - Asset tag for the Laptop# line; empty string leaves
+ *   it blank (used when no asset or multiple assets were found)
  */
 export async function autofillNewTicket(
   requesterName: string,
-  phoneNumber: string
+  phoneNumber: string,
+  laptopNumber: string
 ): Promise<TicketAutofillResult> {
   try {
-    log(`Autofill started (requester: "${requesterName || '(blank)'}", phone: ${phoneNumber})`);
+    log(
+      `Autofill started (requester: "${requesterName || '(blank)'}", phone: ${phoneNumber}, ` +
+        `laptop: "${laptopNumber || '(blank)'}")`
+    );
     const editor = await applyTemplate();
     rewriteDescription(editor, {
       [TICKET_TEMPLATE.tmNameLabel]: requesterName,
       [TICKET_TEMPLATE.phoneLabel]: phoneNumber,
-      [TICKET_TEMPLATE.laptopLabel]: '',
+      [TICKET_TEMPLATE.laptopLabel]: laptopNumber,
     });
     log('Description rewritten; autofill complete');
     return { success: true };

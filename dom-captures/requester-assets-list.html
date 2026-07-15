@@ -1,0 +1,328 @@
+<div id="user_cis" class="user-cis detailed_view active">
+              
+<div class="user_cis_wrapper">
+
+		<div class="assignment-list">
+			<div id="quick_assign_ci_27432" class="assignment" data-is-hardware="true">
+				<div class="asset-name">
+						<a target="_blank" class="asset-name" href="/cmdb/items/27432">CCB-1D88Q74</a>
+					<div>
+					</div>
+				</div>
+			</div>
+			<div id="quick_assign_ci_29203" class="assignment" data-is-hardware="true">
+				<div class="asset-name">
+						<a target="_blank" class="asset-name" href="/cmdb/items/29203">CCB-9X6HHG4</a>
+					<div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="no_assets_associated pb8 mb24 hide">
+			No assets associated to Casey Dietz
+		</div>
+		<div class="assignment-history-wrapper hide">
+    <h3 class="semi-bold">Assignment History</h3>
+    <div id="assignment-history-list">
+        <div id="no-assignment-history" class="no_data">No Records Found.</div>
+    <div class="loading-box event-type-loading" style="display: none;"></div></div>
+</div>
+
+
+<script type="text/javascript">
+    jQuery(document).ready( function($) {
+
+        function formatDate(date) {
+            if(date) {
+                if(date.length > 20) date = date.substr(0,19);
+                return moment(date).format(getDateFormat('filter_format') + ' ' + current_user_time_format['moment']);
+            }
+            return date;
+        }
+
+        function getTranslationStr(key, options) {
+            var translationStr = I18n.t(key, options);
+            if(options.source === 'User') return translationStr;
+            // Relpace hyperlink with b tag, if the source contains other that User - 'Workflow'
+            var $wrap = $('<span>').append(translationStr);
+            var $aTag = $wrap.find('a');
+            $aTag.replaceWith($('<b>').text(options.source));
+            return $wrap.prop('outerHTML');
+        }
+
+        function processData(data) {
+            var assignments = data.assignment_history;
+
+
+            $('#assignment-history-list').append(assignmentHistory({ assignments, userView: true }));
+        }
+
+        function setPagelessConfig(assignmentHistoryUrl) {
+            $('#assignment-history-list').pageless({
+                url: assignmentHistoryUrl,
+                loaderMsg: "Loading more results...",
+                loaderHtml: '<div class="loading-box event-type-loading"></div>',
+                container: '#assignment-history-list',
+                currentPage: 0,
+                dataType: 'json',
+                params,
+                scrape: processData,
+                contentType: 'application/json',
+                beforeSend: function(jqXHR, settings){
+                    if(window.APP_ENV === 'development') {
+                        settings.crossDomain = true;
+                        settings.xhrFields = { withCredentials: true }
+                    }
+                },
+                complete: function(data, settings) {
+                    if(!data.assignment_history.length || data.assignment_history.length < params.per_page)
+                        $('#assignment-history-list').off('.pageless');
+                    if(!data.assignment_history.length && settings.currentPage === 1) {
+                        $('.assignment-history-wrapper').toggleClass('hide', true);
+                        $('#no-assignment-history').toggleClass('hide', false);
+                    } else {
+                        $('#no-assignment-history').toggleClass('hide', true);
+                    }
+                }
+            });
+        }
+
+        var assignmentHistory = HBSUtils.getTemplate('assets/assignment_history'),
+            params = { per_page: 30, page: 1 },
+            assignmentHistoryUrl = API_V2_PATH + '/users/21003954846/assignment-history';
+
+        setPagelessConfig(assignmentHistoryUrl);
+    });
+</script>
+
+</div>
+
+<script type="text/javascript">
+
+	(function ($) {
+		// Variables
+		var cisCount = Number('2');
+		var userID = "21003954846";
+		var assignAssetURLs = {
+			"search" : "/cmdb/items/itil_dialog_search",
+			"listItems": "/cmdb/items/{0}"
+		}
+
+		// DOM Elements
+		var $parentAssignAssetEl = $('#user_cis');
+		var $assignAssetInputEl = $(".default_assign_assets #assign_assets_id");
+
+		// Autocomplete search for Assets to be assigned
+		var searchAssignAssetsAutocomplete = function(request, response) {
+			var data = {
+				sSearch: request.term,
+	            asset_quick_assign: true,
+	            user_id: userID
+			};
+			$.ajax({
+	            url: assignAssetURLs["search"],
+	            data: data,
+	            dataType: 'json',
+	            success: function (data) {
+                	response($.map(data.results, function (item) {
+	                    return {
+	                        name: item.name,
+	                        id: item.id,
+	                        value: item.name,
+	                        data: item
+	                    }
+                	}));
+            	}
+        	});
+		};
+
+		var assetAutocompleteRenderItem = function(ul, item) {
+			$(ul).removeAttr("class");
+			var dept = item.data.department_name ? item.data.department_name : '-';
+			var usedBy = item.data.used_by ? item.data.used_by : '-';
+			var autocomplete_item_key = window.hasUpdatedPlugins ? 'ui-autocomplete-item' : 'item.autocomplete';
+
+	        return $("<li></li>")
+	        	.data(autocomplete_item_key, item)
+	            .append("<a>" + item.name + "</a>")
+	            .append("<div><span class='ellipsis'>Used By: "+ usedBy+"</span><span class='dot'>.</span><span class='ellipsis'>Department: "+ dept +"</span></div>")
+	            .appendTo(ul);
+		};
+ 
+		var constructAssetsDOM = function(item) {
+				var asset = {
+					asset_id: item.data.display_id,
+					asset_name: item.data.name,
+					managed_by_name: item.data.agent_name,
+					isHardware: item.data['hardware?'],
+					return_assigned_asset_label: "Return"
+				};
+				jQuery('.assignment-list').append(HBSUtils.getTemplate('assets/assignment_history')({assignments: [asset], userView: true}));
+	      	$('.no_assets_associated').addClass('hide');
+
+		};
+
+		var manipulateCiCount = function(isIncrement) {
+			var ciCount = isIncrement ? (++cisCount) : (--cisCount);
+			(ciCount < 1) ? ($('#cisCount').html('')) : ($('#cisCount').html('('+ciCount+')'));
+		};
+
+		// Requests an API call to assign asset to the requested user
+		var assignAssetAPI = function(item, userID) {
+			var depts = [21000461833];
+			var deptID = (depts.length == 1) ? depts[0] : null;
+
+			var data = {
+				"cmdb_config_item": {
+					"user_id" : Number(userID),
+					"assigned_on": moment.utc(new Date()).format(),
+					"department_id": deptID
+				},
+				"asset_quick_assign": true
+			};
+
+			if(item.data["hardware?"]) {
+				data["cmdb_config_item"]["level_field_attributes"] = {
+					"asset_state_21000644720" :  Number("1")
+				}
+			}
+
+	        $.ajax({
+	        	url: ItilUtil.format(assignAssetURLs["listItems"], item.data.display_id),
+				type: 'PUT',
+				dataType: 'json',
+				data: data,
+				success: function(data) {
+					$assignAssetInputEl.val('');
+					if(data.access_denied){
+						toastr.error(I18n.t("js_translations.error_heading.unprivileged_tickets"));
+						return;
+					}
+					if(data.success) {
+						$('.modal.asset_reassign_confirmation_dialog').modal("hide");
+					  	constructAssetsDOM(item);
+						manipulateCiCount(true)
+					} else {
+				  		toastr.error(I18n.t("js_translations.common.something_went_wrong"));
+					}
+				},
+				error: function(data){
+					$assignAssetInputEl.val('');
+					toastr.error(I18n.t("js_translations.common.something_went_wrong"));
+				}
+			});
+		};
+
+		var assignAssetToUser = function(item) {
+			if(item.data.used_by) {
+				ItilUtil.createConfirmModal({
+		          "title": "Assign Asset",
+		          "backdrop"    : "static",
+		              "submit_label"  : "Reassign",
+		              "close_label"   : I18n.t("js_translations.catalog.items.fulfil_delete_cancel_label"),
+                  "content"     : "<p><b>"+item.name+"</b>"+ " is assigned to" +"<b>"+ item.data.used_by +".</b></p><p>"+"Do you want to continue reassigning it?"+"</p>",
+		              "width"     : "400",
+		              "classes"     : "asset_reassign_confirmation_dialog modal-small",
+		              confirmCallback: assignAssetAPI.bind(this, item, userID)
+		        });
+			} else {
+				assignAssetAPI(item, userID);
+			}
+		};
+
+		// Requests an API call to remove the asset from the user's list
+		var removeAssignedAsset = function() {
+			var assetID = $('#itil_confirm_btn').data('item-id');
+			var isHardware = $('#itil_confirm_btn').data('is-hardware');
+			var data = {
+				"cmdb_config_item": {
+					"user_id" 	   : null,
+					"assigned_on"  : null,
+					"department_id": null
+				},
+				"asset_quick_assign": true
+			};
+
+			if(isHardware) {
+				data["cmdb_config_item"]["level_field_attributes"] = {
+					"asset_state_21000644720" :  Number("4")
+				}
+			}
+
+	        $.ajax({
+	        	url: ItilUtil.format(assignAssetURLs["listItems"], assetID),
+				type: 'PUT',
+				dataType: 'json',
+				data: data,
+				success: function(data) {
+					if(data.success) {
+						$('#quick_assign_ci_'+assetID).fadeOut('fast', function(){
+							$('.modal.asset_unassign_confirmation_dialog').modal("hide");
+							$(this).remove();
+							manipulateCiCount(false);
+							$('.no_assets_associated').toggleClass('hide', $('.assignment-list .assignment').length > 0);
+						});
+					} else {
+						toastr.error(I18n.t("js_translations.common.something_went_wrong"));
+					}
+				},
+				error: function(data){
+				  toastr.error(I18n.t("js_translations.common.something_went_wrong"));
+				}
+			});
+
+		};
+
+		// Opens confirmation to remove the asset
+		var unAssignUser = function(e) {
+			e.preventDefault();
+	        ItilUtil.createConfirmModal({
+	          "title": "Unassign Assets",
+	          "backdrop" : "static",
+              "submit_label"  : "Unassign",
+              "close_label"   : I18n.t("js_translations.catalog.items.fulfil_delete_cancel_label"),
+              "content"       : "<p>Are you sure you want to unassign the asset?</p>",
+              "width"     	  : "400",
+              "classes"       : "asset_unassign_confirmation_dialog modal-small",
+              "confirmCallback": removeAssignedAsset
+	        });
+	        $('#itil_confirm_btn').data('item-id', $(this).data('item-id'));
+			$('#itil_confirm_btn').data('is-hardware', $(this).closest('.assignment').data('is-hardware'));
+		};
+
+		var toggleSearchAndAddBtn = function(showSearch) {
+			$('.assign_ci_btn').toggle(!showSearch);
+			$('.default_assign_assets').toggleClass('hide', !showSearch);
+			$('.default_assign_assets ul').hide();
+			showSearch && $assignAssetInputEl.val('');
+			showSearch && $assignAssetInputEl.focus();
+		};
+		
+		var autocomplete_key = window.hasUpdatedPlugins ? 'ui-autocomplete' : 'autocomplete';
+
+		var assetInputElement = $assignAssetInputEl
+			.autocomplete({
+				appendTo: ".autocomplete-container",
+				autoFocus: true,
+				source: searchAssignAssetsAutocomplete,
+		    	select: function (event, ui) {
+			    	$assignAssetInputEl.val(ui.item.name);
+			    	assignAssetToUser(ui.item);
+				},
+			})
+			.data(autocomplete_key);
+			if(assetInputElement){
+				assetInputElement._renderItem = assetAutocompleteRenderItem;
+			}
+
+		// Events Binding
+		$parentAssignAssetEl.on('click', '.unassign_asset_user', unAssignUser);
+
+		$parentAssignAssetEl.on('click', '.assign_ci_btn',toggleSearchAndAddBtn.bind(this, true));
+
+	 	$parentAssignAssetEl.on('click', '.default_assign_assets .ficon-close',toggleSearchAndAddBtn.bind(this, false));
+
+	}(jQuery));
+	
+</script>
+          </div>

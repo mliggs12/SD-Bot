@@ -36,6 +36,7 @@ function init(): void {
   resultDiv.className = '';
   if (phoneNumberSpan) phoneNumberSpan.textContent = '';
   if (requesterNameSpan) requesterNameSpan.textContent = '';
+  if (laptopSerialSpan) laptopSerialSpan.textContent = '';
 
   // Show version + build stamp so a stale dist/ build is immediately visible
   if (buildInfoDiv) {
@@ -139,18 +140,39 @@ function handleWorkflowUpdate(message: WorkflowUpdateMessage): void {
 function handleWorkflowComplete(message: WorkflowCompleteMessage): void {
   if (!resultDiv || !message.requesterData) return;
 
-  const { requesterName, requesterUserId, phoneNumber, source } = message.requesterData;
+  const { requesterName, phoneNumber, source, laptopNumber, assetTags } = message.requesterData;
 
   // Update UI elements
   if (requesterNameSpan) requesterNameSpan.textContent = requesterName;
   if (phoneNumberSpan) phoneNumberSpan.textContent = phoneNumber;
+  if (laptopSerialSpan) laptopSerialSpan.textContent = formatLaptopDisplay(laptopNumber, assetTags);
 
-  // Status message with source indicator
   const sourceLabel = source === 'tickets' ? ' (matched from tickets)' : '';
-  resultDiv.textContent = `Workflow complete${sourceLabel}. All tabs opened.`;
-  resultDiv.className = '';
-  resultDiv.style.color = '#28a745';
   resultDiv.style.fontWeight = 'bold';
+
+  // Multiple assets found: the ticket's Laptop# was left blank since we can't
+  // guess which one — flag it so the tech knows to confirm with the caller
+  if (assetTags && assetTags.length > 1) {
+    resultDiv.textContent = `Workflow complete${sourceLabel}. Multiple laptops found — confirm with caller and fill Laptop# manually.`;
+    resultDiv.className = 'warning';
+    resultDiv.style.color = '';
+  } else {
+    resultDiv.textContent = `Workflow complete${sourceLabel}. All tabs opened.`;
+    resultDiv.className = '';
+    resultDiv.style.color = '#28a745';
+  }
+}
+
+/**
+ * Formats the sidepanel's Laptop # display: the asset tag when exactly one
+ * was found, a list to prompt manual disambiguation when there were several,
+ * or a "none found" note otherwise
+ */
+function formatLaptopDisplay(laptopNumber: string | undefined, assetTags: string[] | undefined): string {
+  if (assetTags && assetTags.length > 1) {
+    return `Multiple found (ask caller): ${assetTags.join(', ')}`;
+  }
+  return laptopNumber || 'None found';
 }
 
 /**
@@ -178,6 +200,7 @@ function triggerWorkflow(): void {
   // Clear data from any previous run
   if (requesterNameSpan) requesterNameSpan.textContent = '';
   if (phoneNumberSpan) phoneNumberSpan.textContent = '';
+  if (laptopSerialSpan) laptopSerialSpan.textContent = '';
 
   resultDiv.textContent = 'Starting workflow...';
   resultDiv.className = '';

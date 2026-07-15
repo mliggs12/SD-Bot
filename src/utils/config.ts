@@ -44,6 +44,16 @@ export const FRESHSERVICE_TICKET_SELECTORS = {
   editorMarker: 'span.fr-marker',
 } as const;
 
+// DOM selectors for the FreshService requester profile page's Assets tab
+// The tab panel's assignment list is rendered server-side into the page on
+// load (not fetched via AJAX on tab click), so it can be scraped directly
+// without needing to open the Assets tab first
+export const FRESHSERVICE_ASSET_SELECTORS = {
+  assignmentList: '.assignment-list',
+  assignmentItem: '.assignment[data-is-hardware="true"]',
+  assetNameLink: 'a.asset-name',
+} as const;
+
 // Ticket template configuration
 export const TICKET_TEMPLATE = {
   name: 'Standard Ticket',
@@ -78,6 +88,13 @@ export const AUTOFILL_RETRY = {
 export const CALLING_NUMBER_RETRY = {
   attempts: 8,
   delayMs: 500,
+} as const;
+
+// Retry configuration for messaging the requester profile tab
+// (its content script may not be injected yet while the tab is still loading)
+export const ASSET_LOOKUP_RETRY = {
+  attempts: 5,
+  delayMs: 1000,
 } as const;
 
 // Storage keys
