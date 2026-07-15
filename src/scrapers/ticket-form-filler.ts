@@ -164,6 +164,27 @@ function rewriteDescription(editor: HTMLElement, values: Readonly<Record<string,
 }
 
 /**
+ * Snapshot of the page state for failure diagnostics, so error reports show
+ * what the page actually looked like (e.g. form not rendered, a picker/dialog
+ * in the way, or selectors no longer matching)
+ */
+function buildDiagnostics(): string {
+  const trigger = document.querySelector(FRESHSERVICE_TICKET_SELECTORS.templateTrigger);
+  const anyTriggerCount = document.querySelectorAll('.ember-power-select-trigger').length;
+  const editor = getDescriptionEditor();
+  const optionCount = document.querySelectorAll(FRESHSERVICE_TICKET_SELECTORS.templateOption).length;
+  return [
+    `url=${location.pathname}`,
+    `title="${document.title}"`,
+    `templateTrigger=${trigger ? 'found' : 'MISSING'}`,
+    `powerSelectTriggersOnPage=${anyTriggerCount}`,
+    `descriptionEditor=${editor ? 'found' : 'MISSING'}`,
+    `visibleOptions=${optionCount}`,
+    `docHidden=${document.hidden}`,
+  ].join(', ');
+}
+
+/**
  * Applies the Standard Ticket template to the new ticket form and rewrites the
  * description down to the keep lines with caller details filled in:
  *
@@ -190,7 +211,9 @@ export async function autofillNewTicket(
     log('Description rewritten; autofill complete');
     return { success: true };
   } catch (error) {
-    const message = `Error autofilling new ticket: ${formatErrorWithStack(error, true)}`;
+    const message =
+      `Error autofilling new ticket: ${formatErrorWithStack(error, true)} | ` +
+      `Page state: ${buildDiagnostics()}`;
     console.error(`[SD-Bot] ${message}`);
     return {
       success: false,

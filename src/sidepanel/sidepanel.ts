@@ -12,6 +12,7 @@ const resultDiv = document.getElementById('result');
 const requesterNameSpan = document.getElementById('requester-name');
 const phoneNumberSpan = document.getElementById('phone-number');
 const laptopSerialSpan = document.getElementById('laptop-serial');
+const buildInfoDiv = document.getElementById('build-info');
 
 /**
  * Initialize the sidepanel
@@ -30,6 +31,11 @@ function init(): void {
   resultDiv.className = '';
   if (phoneNumberSpan) phoneNumberSpan.textContent = '';
   if (requesterNameSpan) requesterNameSpan.textContent = '';
+
+  // Show version + build stamp so a stale dist/ build is immediately visible
+  if (buildInfoDiv) {
+    buildInfoDiv.textContent = `SD Bot v${chrome.runtime.getManifest().version} — built ${__BUILD_INFO__}`;
+  }
 }
 
 /**

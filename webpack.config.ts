@@ -40,6 +40,13 @@ const config = (env: unknown, argv: { mode?: string }): webpack.Configuration =>
     },
     
     plugins: [
+      // Bake a build timestamp into the compiled JS so a stale dist/ is
+      // immediately visible in the sidepanel and console logs
+      new webpack.DefinePlugin({
+        __BUILD_INFO__: JSON.stringify(
+          `${new Date().toISOString().replace('T', ' ').slice(0, 16)} UTC`
+        ),
+      }),
       new CopyWebpackPlugin({
         patterns: [
           { from: 'manifest.json', to: 'manifest.json' },

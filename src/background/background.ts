@@ -289,7 +289,17 @@ async function sendAutofillWithRetry(
       lastError = error;
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+
+  // Include the ticket tab's state so "Receiving end does not exist" errors
+  // show whether the tab ever loaded (or was discarded) when retries ran out
+  let tabInfo = '';
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    tabInfo = ` (ticket tab: status=${tab.status}, discarded=${tab.discarded}, url=${tab.url || 'n/a'})`;
+  } catch {
+    tabInfo = ' (ticket tab no longer exists)';
+  }
+  throw new Error(`${formatErrorWithStack(lastError, true)}${tabInfo}`);
 }
 
 /**
