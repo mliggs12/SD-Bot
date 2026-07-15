@@ -25,14 +25,36 @@ import {
   FRESHSERVICE_USER_PROFILE_URL,
   AUTOFILL_RETRY,
   CALLING_NUMBER_RETRY,
-  TEST_MODE,
-  TEST_PHONE_NUMBER
+  STORAGE_KEYS
 } from '../utils/config';
 import { formatErrorWithStack } from '../utils/error-handler';
 
 // Handle action button click to open side panel
 chrome.action.onClicked.addListener(async (tab) => {
   await chrome.sidePanel.open({ windowId: tab.windowId });
+});
+
+/**
+ * Show a TEST badge on the toolbar icon whenever test mode is enabled, so the
+ * state is visible even when the side panel is closed — a run in test mode
+ * uses the configured number instead of detecting the live call
+ */
+async function updateTestModeBadge(): Promise<void> {
+  const settings = await StorageService.getTestModeSettings();
+  await chrome.action.setBadgeText({ text: settings.enabled ? 'TEST' : '' });
+  if (settings.enabled) {
+    await chrome.action.setBadgeBackgroundColor({ color: '#FFC107' });
+    await chrome.action.setBadgeTextColor({ color: '#000000' });
+  }
+}
+
+// Re-assert the badge on every service worker start, and flip it the instant
+// the sidepanel toggle changes the stored settings
+updateTestModeBadge().catch((error) => console.error('Failed to update test mode badge:', error));
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes[STORAGE_KEYS.testModeSettings]) {
+    updateTestModeBadge().catch((error) => console.error('Failed to update test mode badge:', error));
+  }
 });
 
 // Listen for messages from sidepanel
@@ -66,11 +88,17 @@ async function handleWorkflow(): Promise<void> {
   try {
     let phoneNumber: string;
 
-    if (TEST_MODE) {
-      // Test mode: use static phone number, skip RingCentral steps
-      phoneNumber = TEST_PHONE_NUMBER;
+    // Test mode is a runtime setting toggled from the sidepanel
+    const testSettings = await StorageService.getTestModeSettings();
+
+    if (testSettings.enabled) {
+      // Test mode: use the configured phone number, skip RingCentral steps
+      phoneNumber = testSettings.phoneNumber.trim();
+      if (!phoneNumber) {
+        throw new Error('Test mode is enabled but no test phone number is set. Enter one in the sidepanel.');
+      }
       sendPhoneNumberIdentified(phoneNumber);
-      sendWorkflowUpdate(`Test Mode: Using static number ${phoneNumber}. Searching FreshService...`);
+      sendWorkflowUpdate(`Test Mode: Using ${phoneNumber} (no call detection). Searching FreshService...`);
     } else {
       // Normal mode: find RingCentral tab and extract calling number
       const maxTab = await findRingCentralTab();

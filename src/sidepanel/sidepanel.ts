@@ -6,6 +6,7 @@ import {
   WorkflowCompleteMessage,
   WorkflowErrorMessage
 } from '../types';
+import { StorageService } from '../services/storage-service';
 
 // UI elements
 const resultDiv = document.getElementById('result');
@@ -13,6 +14,10 @@ const requesterNameSpan = document.getElementById('requester-name');
 const phoneNumberSpan = document.getElementById('phone-number');
 const laptopSerialSpan = document.getElementById('laptop-serial');
 const buildInfoDiv = document.getElementById('build-info');
+const runWorkflowButton = document.getElementById('run-workflow') as HTMLButtonElement | null;
+const testModeSection = document.getElementById('test-mode-section');
+const testModeToggle = document.getElementById('test-mode-toggle') as HTMLInputElement | null;
+const testPhoneInput = document.getElementById('test-phone') as HTMLInputElement | null;
 
 /**
  * Initialize the sidepanel
@@ -36,6 +41,55 @@ function init(): void {
   if (buildInfoDiv) {
     buildInfoDiv.textContent = `SD Bot v${chrome.runtime.getManifest().version} — built ${__BUILD_INFO__}`;
   }
+
+  initTestModeControls();
+
+  if (runWorkflowButton) {
+    runWorkflowButton.addEventListener('click', () => triggerWorkflow());
+  }
+}
+
+/**
+ * Load persisted test mode settings into the controls and save on change
+ * Test mode is read by the background script at workflow start, so no rebuild
+ * or reload is needed to toggle it
+ */
+function initTestModeControls(): void {
+  if (!testModeToggle || !testPhoneInput) return;
+
+  StorageService.getTestModeSettings().then((settings) => {
+    testModeToggle.checked = settings.enabled;
+    testPhoneInput.value = settings.phoneNumber;
+    updateTestModeUi();
+  });
+
+  testModeToggle.addEventListener('change', () => {
+    updateTestModeUi();
+    saveTestModeSettings();
+  });
+  testPhoneInput.addEventListener('input', () => saveTestModeSettings());
+}
+
+/**
+ * Reflect the toggle state in the UI (highlight section, enable/disable input)
+ */
+function updateTestModeUi(): void {
+  if (!testModeToggle || !testPhoneInput) return;
+  testPhoneInput.disabled = !testModeToggle.checked;
+  if (testModeSection) {
+    testModeSection.classList.toggle('active', testModeToggle.checked);
+  }
+}
+
+/**
+ * Persist the current test mode controls to storage
+ */
+function saveTestModeSettings(): void {
+  if (!testModeToggle || !testPhoneInput) return;
+  StorageService.setTestModeSettings({
+    enabled: testModeToggle.checked,
+    phoneNumber: testPhoneInput.value.trim(),
+  });
 }
 
 /**
@@ -121,7 +175,12 @@ function handleWorkflowError(message: WorkflowErrorMessage): void {
 function triggerWorkflow(): void {
   if (!resultDiv) return;
 
+  // Clear data from any previous run
+  if (requesterNameSpan) requesterNameSpan.textContent = '';
+  if (phoneNumberSpan) phoneNumberSpan.textContent = '';
+
   resultDiv.textContent = 'Starting workflow...';
+  resultDiv.className = '';
 
   const message: TriggerWorkflowMessage = {
     type: 'TRIGGER_WORKFLOW',

@@ -83,10 +83,10 @@ export const CALLING_NUMBER_RETRY = {
 // Storage keys
 export const STORAGE_KEYS = {
   currentRequester: 'currentRequester',
+  testModeSettings: 'testModeSettings',
 } as const;
 
-// Test mode configuration
-// WARNING: TEST_MODE should be 'false' in production builds!
-// Set to true only during development to use static test number instead of extracting from RingCentral
-export const TEST_MODE = false;
-export const TEST_PHONE_NUMBER = '7207579434';
+// Test mode is a runtime setting toggled from the sidepanel (persisted in
+// chrome.storage.local) — no rebuild required. This is only the default
+// phone number seeded into the sidepanel's test number field.
+export const DEFAULT_TEST_PHONE_NUMBER = '7207579434';
