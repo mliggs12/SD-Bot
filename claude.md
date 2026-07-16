@@ -1385,7 +1385,12 @@ const element =
 
 ## Version History
 
-**Current Version**: 1.6.6
+**Current Version**: 1.6.7
+
+**Recent Changes (1.6.7)**:
+- The workflow no longer auto-runs when the extension icon is clicked — clicking the icon now only opens the side panel. Starting a run always goes through the sidepanel's "Run workflow" button
+- `initAndTrigger()` removed from the sidepanel; DOM-ready now calls `init()` only, with no auto-fired `triggerWorkflow()`
+- Sidepanel layout reordered to put the "Run workflow" button first (styled as a prominent primary button) above the result/requester-info sections, since it's now the sole entry point for starting a run; initial status text updated to reference the button instead of the extension icon
 
 **Recent Changes (1.6.6)**:
 - Added laptop asset lookup: after a unique requester is identified, their FreshService profile's Assets tab is scraped for assigned hardware and the asset tag is used to fill the ticket's Laptop# line
