@@ -32,7 +32,7 @@ function init(): void {
   chrome.runtime.onMessage.addListener(handleMessage);
   
   // Display initial state
-  resultDiv.textContent = 'Ready. Click extension icon to start workflow.';
+  resultDiv.textContent = 'Ready. Click "Run workflow" to start.';
   resultDiv.className = '';
   if (phoneNumberSpan) phoneNumberSpan.textContent = '';
   if (requesterNameSpan) requesterNameSpan.textContent = '';
@@ -191,8 +191,8 @@ function handleWorkflowError(message: WorkflowErrorMessage): void {
 }
 
 /**
- * Trigger workflow when sidepanel opens
- * This will be called when user clicks extension icon
+ * Trigger workflow
+ * Called when the user clicks the "Run workflow" button
  */
 function triggerWorkflow(): void {
   if (!resultDiv) return;
@@ -218,19 +218,9 @@ function triggerWorkflow(): void {
   });
 }
 
-/**
- * Initialize sidepanel and trigger workflow
- * Small delay ensures message listener is fully registered before workflow starts
- */
-function initAndTrigger(): void {
-  const LISTENER_SETUP_DELAY = 100; // Wait for message listener to fully register
-  init();
-  setTimeout(() => triggerWorkflow(), LISTENER_SETUP_DELAY);
-}
-
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initAndTrigger);
+  document.addEventListener('DOMContentLoaded', init);
 } else {
-  initAndTrigger();
+  init();
 }
