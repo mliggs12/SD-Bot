@@ -128,7 +128,14 @@ async function handleWorkflow(): Promise<void> {
 
     const searchTab = await searchFreshService(phoneNumber);
 
-    // Identify the requester, but prep the new ticket even when identification fails
+    // Identify the requester, but prep the new ticket even when identification
+    // fails, so the tech has a partially-filled ticket (template + Ph#) while
+    // they search manually. If they later use "Continue with active tab",
+    // handleManualContinue autofills again with the now-known requester —
+    // safe because rewriteDescription() replaces each line's value in place
+    // rather than appending to it, and only trims the template's boilerplate
+    // down to the keep lines once, so a second pass updates values without
+    // duplicating text or touching anything the tech added in between
     let requesterData: StoredRequester | undefined;
     let searchError: unknown;
     try {
@@ -147,7 +154,7 @@ async function handleWorkflow(): Promise<void> {
     }
 
     // TM Name and Laptop# are left blank when not uniquely determined
-    const autofillError = await autofillNewTicket(
+    const autofillOutcome = await autofillNewTicket(
       ticketTab.id!,
       requesterData?.requesterName ?? '',
       phoneNumber,
@@ -165,14 +172,19 @@ async function handleWorkflow(): Promise<void> {
     // A requester was identified, so the manual continue path no longer applies
     await StorageService.clearPendingRun();
 
-    if (autofillError) {
+    if (!autofillOutcome.success) {
       sendWorkflowError(
         'Ticket autofill failed',
-        `${autofillError} Fill the ticket description manually.`
+        `${autofillOutcome.error} Fill the ticket description manually.`
       );
       return;
     }
 
+    requesterData = {
+      ...requesterData,
+      requesterAutoSelected: autofillOutcome.requesterAutoSelected,
+      requesterSelectionNote: autofillOutcome.requesterSelectionNote,
+    };
     sendWorkflowComplete(requesterData);
   } catch (error) {
     const errorMessage = formatErrorWithStack(error, true);
@@ -355,21 +367,26 @@ async function handleManualContinue(): Promise<void> {
       return;
     }
 
-    const autofillError = await autofillNewTicket(
+    const autofillOutcome = await autofillNewTicket(
       pendingRun.ticketTabId,
       requesterData.requesterName,
       pendingRun.phoneNumber,
       requesterData.laptopNumber ?? ''
     );
 
-    if (autofillError) {
+    if (!autofillOutcome.success) {
       sendWorkflowError(
         'Ticket autofill failed',
-        `${autofillError} Fill the ticket description manually.`
+        `${autofillOutcome.error} Fill the ticket description manually.`
       );
       return;
     }
 
+    requesterData = {
+      ...requesterData,
+      requesterAutoSelected: autofillOutcome.requesterAutoSelected,
+      requesterSelectionNote: autofillOutcome.requesterSelectionNote,
+    };
     sendWorkflowComplete(requesterData);
   } catch (error) {
     sendWorkflowError('Extension Error', formatErrorWithStack(error, true));
@@ -402,14 +419,16 @@ function extractUserIdFromProfileUrl(url: string | undefined): string | undefine
  * @param requesterName - Requester name ('' when not uniquely identified)
  * @param phoneNumber - The caller's phone number
  * @param laptopNumber - Asset tag for the Laptop# line ('' when none or multiple were found)
- * @returns An error description on failure, or null on success
+ * @returns The autofill result: success===false means the template/description
+ *   couldn't be applied; requesterAutoSelected/Note report the independent,
+ *   non-fatal outcome of the Requester field selection either way
  */
 async function autofillNewTicket(
   ticketTabId: number,
   requesterName: string,
   phoneNumber: string,
   laptopNumber: string
-): Promise<string | null> {
+): Promise<AutofillTicketResultMessage> {
   sendWorkflowUpdate('Prepping new ticket with Standard Ticket template...');
   try {
     // Foreground the ticket tab first: hidden tabs may never finish rendering
@@ -420,13 +439,18 @@ async function autofillNewTicket(
     const result = await sendAutofillWithRetry(ticketTabId, requesterName, phoneNumber, laptopNumber);
     if (!result.success) {
       console.error('Ticket autofill failed:', result.error);
-      return result.error || 'Ticket autofill failed for an unknown reason.';
+      return { ...result, error: result.error || 'Ticket autofill failed for an unknown reason.' };
     }
     sendWorkflowUpdate('New ticket prepped with caller details.');
-    return null;
+    return result;
   } catch (error) {
     console.error('Ticket autofill failed:', error);
-    return formatErrorWithStack(error, true);
+    return {
+      type: 'AUTOFILL_TICKET_RESULT',
+      success: false,
+      error: formatErrorWithStack(error, true),
+      requesterAutoSelected: false,
+    };
   }
 }
 

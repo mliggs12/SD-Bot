@@ -34,10 +34,10 @@ function init(): void {
     console.error('Result div not found');
     return;
   }
-
+  
   // Listen for messages from background script
   chrome.runtime.onMessage.addListener(handleMessage);
-
+  
   // Display initial state
   resultDiv.textContent = 'Ready. Click "Run workflow" to start.';
   resultDiv.className = '';
@@ -193,7 +193,8 @@ function handleWorkflowUpdate(message: WorkflowUpdateMessage): void {
 function handleWorkflowComplete(message: WorkflowCompleteMessage): void {
   if (!resultDiv || !message.requesterData) return;
 
-  const { requesterName, phoneNumber, source, laptopNumber, assetTags } = message.requesterData;
+  const { requesterName, phoneNumber, source, laptopNumber, assetTags, requesterAutoSelected } =
+    message.requesterData;
 
   // Update UI elements
   if (requesterNameSpan) requesterNameSpan.textContent = requesterName;
@@ -204,10 +205,18 @@ function handleWorkflowComplete(message: WorkflowCompleteMessage): void {
   const sourceLabel = source === 'tickets' ? ' (matched from tickets)' : '';
   resultDiv.style.fontWeight = 'bold';
 
-  // Multiple assets found: the ticket's Laptop# was left blank since we can't
-  // guess which one — flag it so the tech knows to confirm with the caller
+  // Multiple assets found, or the Requester field couldn't be uniquely
+  // auto-selected — either leaves something for the tech to finish manually
+  const warnings: string[] = [];
   if (assetTags && assetTags.length > 1) {
-    resultDiv.textContent = `Workflow complete${sourceLabel}. Multiple laptops found — confirm with caller and fill Laptop# manually.`;
+    warnings.push('Multiple laptops found — confirm with caller and fill Laptop# manually.');
+  }
+  if (requesterName && requesterAutoSelected === false) {
+    warnings.push(`Requester field left blank — select "${requesterName}" manually.`);
+  }
+
+  if (warnings.length > 0) {
+    resultDiv.textContent = `Workflow complete${sourceLabel}. ${warnings.join(' ')}`;
     resultDiv.className = 'warning';
     resultDiv.style.color = '';
   } else {

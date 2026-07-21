@@ -36,12 +36,49 @@ export const FRESHSERVICE_SELECTORS = {
 // IDs on the form are Ember-generated (ember13, ember15, ...) and change between
 // page loads, so selectors rely on aria-labels and stable component classes
 export const FRESHSERVICE_TICKET_SELECTORS = {
+  // Shared by every ember-power-select widget on this form (template,
+  // requester, agent) — field-specific behavior comes from which trigger's
+  // search input is used to find it, not from separate copies of these
+  powerSelectTrigger: '.ember-power-select-trigger',
+  // Matches both real result options AND, for fields with a status-message
+  // li (e.g. requester's "Type to search"/"Loading options..."), that li
+  // too — they share this base class. Real options are told apart by text
+  // content where needed (see getRequesterResultOptions), not by CSS class,
+  // since a status message's modifier class isn't consistent across every
+  // status text it's used for
+  powerSelectOption: 'li.ember-power-select-option',
+  // Screen-reader-only span showing the current selection's text — the
+  // signal actually used to verify a pick landed, since it's populated only
+  // after a real commit (see getSelectedItemText)
+  powerSelectSelectedItem: '.ember-power-select-selected-item',
   templateTrigger: '.ember-power-select-trigger[aria-label="Select template"]',
   templateSearchInput: 'input.ember-power-select-search-input',
-  templateOption: 'li.ember-power-select-option',
   descriptionEditor: '.fr-element.fr-view[contenteditable="true"]',
   // Froala's hidden cursor-position markers, stripped from kept template lines
   editorMarker: 'span.fr-marker',
+  // Requester field: no aria-label on its trigger (unlike templateTrigger), so
+  // the search input is found by its stable Ember property-name id suffix
+  // (the numeric "emberNNN" prefix is regenerated per page load)
+  requesterSearchInput: 'input[id$="_requesterId"]',
+  requesterStatusMessage: 'li.ember-power-select-option--search-message',
+  // Agent field: FreshService's internal name for it is "Responder" (hence
+  // the id suffix). Unlike Requester, this list is static and fully
+  // populated as soon as the dropdown opens — no async search involved
+  agentSearchInput: 'input[id$="_responderId"]',
+} as const;
+
+// Text shown in the requester typeahead's status message li while no query has
+// been typed yet, or while the debounced search is in flight
+export const REQUESTER_SEARCH = {
+  typeToSearchText: 'Type to search',
+  loadingText: 'Loading options...',
+} as const;
+
+// Agent (assignee) to select on every ticket — always the current user;
+// matched via startsWith rather than exact equality since the dropdown
+// appends a "(Me)" suffix to whichever agent is currently logged in
+export const TICKET_AGENT = {
+  name: 'Michael Liggins',
 } as const;
 
 // DOM selectors for the FreshService requester profile page's Assets tab
@@ -69,6 +106,12 @@ export const TICKET_TEMPLATE = {
   keepLabels: ['TM Name:', 'Ph#:', 'Laptop#:'],
   // Text whose presence signals the template has populated the description editor
   appliedMarker: 'TM Name:',
+  // A boilerplate label always discarded when trimming down to the keep
+  // lines, and never re-added afterward — its continued presence signals
+  // the description hasn't been trimmed yet (still the freshly-applied,
+  // full template), distinguishing that one-time destructive step from a
+  // later value-only update safe to repeat (e.g. via manual continue)
+  trimmedAwayMarker: 'Steps Taken:',
 } as const;
 
 // Timeout constants (in milliseconds)
@@ -79,6 +122,7 @@ export const TIMEOUTS = {
   dropdownOpen: 3000, // first wait for options after opening the template dropdown
   templateApply: 10000, // wait for template content to populate the editor
   domPoll: 200, // polling interval for DOM waits
+  requesterSearchResults: 8000, // wait for the debounced requester search to settle
 } as const;
 
 // Retry configuration for messaging the new ticket tab

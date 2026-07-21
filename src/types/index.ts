@@ -57,6 +57,10 @@ export interface AutofillTicketResultMessage extends BaseMessage {
   type: 'AUTOFILL_TICKET_RESULT';
   success: boolean;
   error?: string;
+  /** True when the Requester field's typeahead was resolved to a single match and clicked */
+  requesterAutoSelected: boolean;
+  /** Reason the Requester field was left blank; present only when requesterAutoSelected is false */
+  requesterSelectionNote?: string;
 }
 
 export interface GetRequesterAssetsMessage extends BaseMessage {
@@ -172,6 +176,10 @@ export interface RequesterAssetsData {
 export interface TicketAutofillResult {
   success: boolean;
   error?: string;
+  /** True when the Requester field's typeahead was resolved to a single match and clicked */
+  requesterAutoSelected: boolean;
+  /** Reason the Requester field was left blank; present only when requesterAutoSelected is false */
+  requesterSelectionNote?: string;
 }
 
 // Storage types
@@ -193,6 +201,8 @@ export interface StoredRequester {
   source?: 'requesters' | 'tickets' | 'manual'; // Where the requester was found
   laptopNumber?: string; // Asset tag, set only when exactly one asset was found
   assetTags?: string[]; // All asset tags found on the requester's profile (0, 1, or many)
+  requesterAutoSelected?: boolean; // True when the ticket's Requester field was auto-selected
+  requesterSelectionNote?: string; // Reason it was left blank, when requesterAutoSelected is false
 }
 
 /**

@@ -463,9 +463,11 @@ The result determines `laptopNumber`/`assetTags` on `requesterData`:
 
 **Step 6: Autofill New Ticket**
 ```typescript
-// Runs even when the requester was NOT uniquely identified —
-// TM Name and Laptop# are simply left blank in that case
-const autofillError = await autofillNewTicket(
+// Runs even when the requester was NOT uniquely identified — TM Name and
+// Laptop# are simply left blank in that case, so the tech has a
+// partially-filled ticket (template applied, Ph# set) to work with while
+// they search manually
+const autofillOutcome = await autofillNewTicket(
   ticketTab.id!,
   requesterData?.requesterName ?? '',
   phoneNumber,
@@ -474,8 +476,9 @@ const autofillError = await autofillNewTicket(
 ```
 The background sends an `AUTOFILL_TICKET` message to the FreshService content
 script in the ticket tab (with retries while the content script loads). The
-content script applies the Standard Ticket template and rewrites the
-description to:
+content script selects the requester from the "Requester" typeahead, selects
+the agent from the "Agent" field, applies the Standard Ticket template, and
+rewrites the description to:
 
 ```
 TM Name: <requester name>
@@ -483,7 +486,17 @@ Ph#: <phone number>
 Laptop#: <asset tag, if exactly one was found>
 ```
 
-Autofill failures are reported to the side panel but do not abort the workflow.
+Autofill failures are reported to the side panel but do not abort the
+workflow. If identification fails, this same ticket tab gets autofilled
+**again** once the tech uses "Continue with active tab" (`handleManualContinue`
+calls `autofillNewTicket` a second time with the now-known requester) — safe
+because `rewriteDescription()` splits into a one-time destructive trim
+(`trimToKeepLabels`, gated on `isDescriptionTrimmed`, boilerplate → keep
+lines only) and a repeatable value update (`setLineValues`, which replaces
+each line's value in place rather than appending to it). A second pass
+therefore updates TM Name/Ph#/Laptop# without duplicating text or touching
+anything else in the description, including any content the tech may have
+added in between.
 
 ### Data Flow
 
@@ -1385,7 +1398,26 @@ const element =
 
 ## Version History
 
-**Current Version**: 1.7.0
+**Current Version**: 1.8.0
+
+**Recent Changes (1.8.0)**:
+- Added Requester field auto-selection to the new ticket form's autofill pass: the identified requester's name is typed into the "Requester" `ember-power-select` typeahead and the matching dropdown result is clicked, removing the last manual step in ticket prep. Unlike the template dropdown, the requester trigger has no `aria-label`; it's found via its search input's stable Ember property-name id suffix (`input[id$="_requesterId"]`) instead
+- The name must be typed as a real keystroke-by-keystroke event stream (`src/utils/dom-utils.ts`'s `typeIntoInput()`: a keydown/input/keyup sequence dispatched per character) — setting the full value in one shot with a single `input` event was tried first and confirmed *not* to work: the results dropdown never opens for a bulk value set, only for genuine per-keystroke typing, matching how a tech has always had to use this field manually
+- The typed search term is the requester's full name (as identified from their profile), typed via `typeIntoInput()`
+- Fixed the actual reason clicking never happened: `FRESHSERVICE_TICKET_SELECTORS.requesterOption` (`li.ember-power-select-option`) also matched the dropdown's own "Type to search"/"Loading options..." status-message `<li>`, which carries that same base class alongside its `--search-message` modifier. `getRequesterResultOptions()` was treating that placeholder as if it were a real result the instant the dropdown opened, so the search-settle wait resolved immediately with a bogus single "option," never found a name match, and gave up before real results ever rendered. From the outside this looked exactly like "the typed name sits in the field looking filled, but was never actually selected" — no click was ever attempted; it wasn't a click failure. Selector now excludes `:not(.ember-power-select-option--search-message)`
+- Hardened `selectRequester()` against stale DOM references: the option list and trigger element are now re-queried fresh immediately before the click and on every verification poll, instead of reusing element references captured earlier in the flow, in case the async search re-renders the dropdown between when a match is found and when it's acted on
+- `getSelectedRequesterName()` now also checks the search input's own value (not just the screen-reader-only `.ember-power-select-selected-item` span): FreshService rewrites the input to show "Name <email>" once a real selection commits, which is the actual visible signal on the page, and only appears post-commit — typed-but-unselected text never includes the email suffix
+- `dispatchMouseSequence()` (`dom-utils.ts`) now also fires `mouseover`/`mouseenter` before `mousedown`/`mouseup`/`click`, in case ember-power-select's option-selection handling depends on hover state that a real mouse interaction would always produce but a direct synthetic click skips
+- Added verbose `[SD-Bot]`-prefixed logging in `selectRequester()` (the full list of option texts a search returned, the exact option text being clicked, explicit verification success) to pinpoint exactly which stage fails if the field still doesn't end up truly selected
+- That logging caught the actual remaining bug live: the "Loading options..." status message doesn't share the `--search-message` modifier class the "Type to search" prompt uses (never directly captured, so this was an unverified assumption), so it was still slipping through as a fake single "option" and `selectRequester` was giving up immediately, before real results ever rendered. Fixed by dropping the CSS-class-based exclusion entirely: `getRequesterResultOptions()` now identifies real results by text content (must contain `<`, i.e. the "Name <email>" format every real result has) rather than guessing at status-message class names
+- Fixed a double-write bug this feature exposed in the existing failed-identification flow: `handleWorkflow` calls `autofillNewTicket` even when the requester wasn't uniquely identified (prepping the ticket with a blank TM Name so the tech has something to work with while they search), and `handleManualContinue` calls it *again* once the tech finds the right person — the old `rewriteDescription()` always replaced the editor's content wholesale and appended each value rather than replacing it, so the second write would have both clobbered anything the tech had typed in between *and* duplicated Ph# (already known and written on the first pass). Fixed at the root instead of by skipping the first write: `rewriteDescription()` now splits into a one-time destructive trim (`trimToKeepLabels`, gated on `isDescriptionTrimmed` — checks for a boilerplate-only label, `TICKET_TEMPLATE.trimmedAwayMarker`, that's always removed and never re-added) and a repeatable value update (`setLineValues`, which clears and replaces each line's value in place instead of appending). A second autofill pass now safely updates just the values that changed, leaving everything else in the description untouched
+- If the typed name matches zero people in the dropdown, the field is left blank rather than guessing, and the sidepanel shows an amber warning naming the requester to select manually — same non-fatal philosophy as the existing "multiple laptops found" handling. Multiple matches for the same name are treated as safe to auto-select (not ambiguous): most requesters have more than one email on file, so duplicate name entries are the same person, and any one of them is a valid pick. Name matching is case-insensitive, since the typeahead doesn't always render names in the same casing as elsewhere in FreshService
+- `ticket-form-filler.ts`'s exported `autofillNewTicket()` applies the template/description **first**, then runs Requester and Agent selection (both self-contained, non-throwing) afterward — initially built the other way around (Requester/Agent first, template last) for blast-radius reasons, but testing showed selecting a template resets other fields back to its own defaults, silently clearing Agent (and likely Requester) if they were set beforehand. Template application is proven, unchanged code, so running it first carries the same low risk while avoiding the reset; `applyTemplate()`'s own idempotency check keeps this safe on a repeated autofill pass against the same tab
+- New `FRESHSERVICE_TICKET_SELECTORS`/`REQUESTER_SEARCH`/`TIMEOUTS.requesterSearchResults` entries in `config.ts`
+- `TicketAutofillResult`, `AutofillTicketResultMessage`, and `StoredRequester` gained `requesterAutoSelected`/`requesterSelectionNote` fields, threaded through `content/freshservice.ts` and both `background.ts` autofill call sites (`handleWorkflow` and `handleManualContinue`)
+- New DOM captures: `dom-captures/requester-dropdown-closed.html`, `dom-captures/requester-dropdown-portal.html`, `dom-captures/requester-field-filled.html`
+- Added Agent field auto-selection alongside Requester: the ticket is always assigned to the same fixed agent (`TICKET_AGENT.name` in `config.ts`, currently "Michael Liggins"), so this is simpler than Requester — the option list is static and fully populated as soon as the dropdown opens (no typing, no async search, no ambiguity to resolve), closely mirroring the existing `applyTemplate()` pattern rather than `selectRequester()`'s. FreshService's internal name for this field is "Responder" (`input[id$="_responderId"]`, mirroring how Requester's internal name is exposed via `_requesterId`). Matched via `startsWith` rather than exact equality since the dropdown appends a "(Me)" suffix to whichever agent is currently logged in. New `selectAgent()` runs in `autofillNewTicket()` alongside `selectRequester()`, after the template/description (see the template-first reordering note below); unlike Requester, its outcome is only logged to the console, not surfaced to the sidepanel — failure here is expected to be low-stakes since FreshService appears to default this field to the current user already. New `agentSearchInput` selector and `TICKET_AGENT` in `config.ts`; new DOM captures `dom-captures/agent-dropdown-closed.html`, `dom-captures/agent-dropdown-filled.html`, `dom-captures/agent-dropdown-portal.html`
+- Cleanup pass (via `/simplify`, 4 parallel review angles) applied on top of the above: consolidated `FRESHSERVICE_TICKET_SELECTORS`' three identical `'li.ember-power-select-option'` entries (template/requester/agent) into one `powerSelectOption`, and the two identical `.ember-power-select-selected-item` entries into one `powerSelectSelectedItem`; added `powerSelectTrigger` for the previously-hardcoded `.ember-power-select-trigger` string literal (was duplicated 3x in `ticket-form-filler.ts`); extracted shared `getPowerSelectTrigger()`/`getSelectedItemText()` helpers used by both Requester and Agent (previously near-identical duplicate functions); removed a redundant re-query in `selectRequester()` that looked defensive but provided no real protection (no `await` separated it from the query it was "re-verifying"); removed background.ts's `AutofillOutcome` interface, which just re-shaped `AutofillTicketResultMessage` — `autofillNewTicket()` now returns that message type directly
 
 **Recent Changes (1.7.0)**:
 - Added a manual continue path for when the automated FreshService search can't uniquely identify a requester (zero or multiple matches): the sidepanel now shows a "Continue with active tab" button after those specific errors, letting the tech manually search FreshService, open the correct requester's profile page, leave it focused, and resume the same run (same new-ticket tab and phone number) from there

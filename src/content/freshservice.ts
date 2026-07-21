@@ -48,12 +48,15 @@ chrome.runtime.onMessage.addListener(
         type: 'AUTOFILL_TICKET_RESULT',
         success: result.success,
         error: result.error,
+        requesterAutoSelected: result.requesterAutoSelected,
+        requesterSelectionNote: result.requesterSelectionNote,
       };
     },
     (errorMessage) => ({
       type: 'AUTOFILL_TICKET_RESULT',
       success: false,
       error: errorMessage,
+      requesterAutoSelected: false,
     })
   )
 );

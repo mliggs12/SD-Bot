@@ -42,9 +42,35 @@ export async function waitFor<T>(
  * ember-power-select chooses options on mouseup
  */
 export function dispatchMouseSequence(element: Element): void {
-  for (const type of ['mousedown', 'mouseup', 'click'] as const) {
+  for (const type of ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'] as const) {
     element.dispatchEvent(
       new MouseEvent(type, { bubbles: true, cancelable: true, view: window })
     );
+  }
+}
+
+/**
+ * Simulates real keystroke-by-keystroke typing into an input, dispatching a
+ * keydown/input/keyup sequence per character via the native value setter
+ * (bypassing any framework property interceptor)
+ *
+ * Setting the full value in one shot and firing a single input event is not
+ * equivalent: some search widgets (confirmed for FreshService's requester
+ * typeahead) only trigger their live search off a genuine per-keystroke
+ * event stream, and never open their results dropdown for a bulk value set
+ */
+export function typeIntoInput(input: HTMLInputElement, text: string): void {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+  let value = '';
+  for (const char of text) {
+    value += char;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true, cancelable: true }));
+    if (setter) {
+      setter.call(input, value);
+    } else {
+      input.value = value;
+    }
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+    input.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true, cancelable: true }));
   }
 }
