@@ -14,6 +14,7 @@ const resultDiv = document.getElementById('result');
 const requesterNameSpan = document.getElementById('requester-name');
 const phoneNumberSpan = document.getElementById('phone-number');
 const laptopSerialSpan = document.getElementById('laptop-serial');
+const copyLaptopButton = document.getElementById('copy-laptop-btn') as HTMLButtonElement | null;
 const buildInfoDiv = document.getElementById('build-info');
 const runWorkflowButton = document.getElementById('run-workflow') as HTMLButtonElement | null;
 const testModeSection = document.getElementById('test-mode-section');
@@ -33,16 +34,17 @@ function init(): void {
     console.error('Result div not found');
     return;
   }
-  
+
   // Listen for messages from background script
   chrome.runtime.onMessage.addListener(handleMessage);
-  
+
   // Display initial state
   resultDiv.textContent = 'Ready. Click "Run workflow" to start.';
   resultDiv.className = '';
   if (phoneNumberSpan) phoneNumberSpan.textContent = '';
   if (requesterNameSpan) requesterNameSpan.textContent = '';
   if (laptopSerialSpan) laptopSerialSpan.textContent = '';
+  updateCopyButtonVisibility();
 
   // Show version + build stamp so a stale dist/ build is immediately visible
   if (buildInfoDiv) {
@@ -57,6 +59,48 @@ function init(): void {
   if (continueManualButton) {
     continueManualButton.addEventListener('click', () => continueWithManualRequester());
   }
+  if (copyLaptopButton) {
+    copyLaptopButton.addEventListener('click', () => copyLaptopNumber());
+  }
+}
+
+/**
+ * Returns the laptop number text to copy, or null if nothing worth copying
+ * is currently displayed (blank or "None found")
+ */
+function getCopyableLaptopText(): string | null {
+  const text = laptopSerialSpan?.textContent?.trim();
+  return text && text !== 'None found' ? text : null;
+}
+
+/**
+ * Show/hide the copy button based on whether a laptop # is currently displayed
+ */
+function updateCopyButtonVisibility(): void {
+  if (!copyLaptopButton) return;
+  copyLaptopButton.style.display = getCopyableLaptopText() ? 'inline-block' : 'none';
+}
+
+/**
+ * Copy the currently displayed laptop number to the clipboard as plain text,
+ * with brief "Copied" feedback on the button
+ */
+function copyLaptopNumber(): void {
+  if (!copyLaptopButton) return;
+
+  const text = getCopyableLaptopText();
+  if (!text) return;
+
+  navigator.clipboard.writeText(text).then(() => {
+    copyLaptopButton.textContent = 'Copied!';
+    copyLaptopButton.classList.add('copied');
+    setTimeout(() => {
+      copyLaptopButton.textContent = 'Copy';
+      copyLaptopButton.classList.remove('copied');
+    }, 1500);
+  }).catch((error) => {
+    console.error('[SD-Bot] Failed to copy laptop number to clipboard:', error);
+  });
 }
 
 /**
@@ -155,6 +199,7 @@ function handleWorkflowComplete(message: WorkflowCompleteMessage): void {
   if (requesterNameSpan) requesterNameSpan.textContent = requesterName;
   if (phoneNumberSpan) phoneNumberSpan.textContent = phoneNumber;
   if (laptopSerialSpan) laptopSerialSpan.textContent = formatLaptopDisplay(laptopNumber, assetTags);
+  updateCopyButtonVisibility();
 
   const sourceLabel = source === 'tickets' ? ' (matched from tickets)' : '';
   resultDiv.style.fontWeight = 'bold';
@@ -214,6 +259,7 @@ function triggerWorkflow(): void {
   if (requesterNameSpan) requesterNameSpan.textContent = '';
   if (phoneNumberSpan) phoneNumberSpan.textContent = '';
   if (laptopSerialSpan) laptopSerialSpan.textContent = '';
+  updateCopyButtonVisibility();
   if (manualContinueSection) manualContinueSection.style.display = 'none';
 
   resultDiv.textContent = 'Starting workflow...';
@@ -244,6 +290,7 @@ function continueWithManualRequester(): void {
 
   if (requesterNameSpan) requesterNameSpan.textContent = '';
   if (laptopSerialSpan) laptopSerialSpan.textContent = '';
+  updateCopyButtonVisibility();
   if (manualContinueSection) manualContinueSection.style.display = 'none';
 
   resultDiv.textContent = 'Continuing with manually selected requester...';

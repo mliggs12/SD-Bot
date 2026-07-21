@@ -107,6 +107,23 @@
     #continue-manual-btn:hover {
       background: #ffc107;
     }
+    #copy-laptop-btn {
+      display: none;
+      margin-left: 6px;
+      padding: 1px 6px;
+      font-size: 11px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      background: #fff;
+      cursor: pointer;
+    }
+    #copy-laptop-btn:hover {
+      background: #eee;
+    }
+    #copy-laptop-btn.copied {
+      background: #d4edda;
+      border-color: #28a745;
+    }
   </style>
 </head>
 <body>
@@ -122,7 +139,7 @@
   <div id="requester-info">
     <p>Name: <span id="requester-name"></span></p>
     <p>Phone: <span id="phone-number"></span></p>
-    <p>Laptop #: <span id="laptop-serial"></span></p>
+    <p>Laptop #: <span id="laptop-serial"></span><button id="copy-laptop-btn" type="button" title="Copy laptop number">Copy</button></p>
   </div>
 
   <div id="test-mode-section">
