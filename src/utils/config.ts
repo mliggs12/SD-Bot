@@ -54,6 +54,11 @@ export const FRESHSERVICE_ASSET_SELECTORS = {
   assetNameLink: 'a.asset-name',
 } as const;
 
+// DOM selector for the requester's name on their FreshService profile page
+export const FRESHSERVICE_PROFILE_SELECTORS = {
+  requesterName: '.agent-name',
+} as const;
+
 // Ticket template configuration
 export const TICKET_TEMPLATE = {
   name: 'Standard Ticket',
@@ -101,6 +106,7 @@ export const ASSET_LOOKUP_RETRY = {
 export const STORAGE_KEYS = {
   currentRequester: 'currentRequester',
   testModeSettings: 'testModeSettings',
+  pendingRun: 'pendingRun',
 } as const;
 
 // Test mode is a runtime setting toggled from the sidepanel (persisted in

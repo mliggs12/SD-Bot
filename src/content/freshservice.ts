@@ -4,9 +4,11 @@ import {
   AutofillTicketMessage,
   AutofillTicketResultMessage,
   GetRequesterAssetsMessage,
-  RequesterAssetsResultMessage
+  RequesterAssetsResultMessage,
+  GetRequesterProfileInfoMessage,
+  RequesterProfileInfoResultMessage
 } from '../types';
-import { scrapeSearchResults } from '../scrapers/freshservice-scraper';
+import { scrapeSearchResults, scrapeRequesterProfileInfo } from '../scrapers/freshservice-scraper';
 import { autofillNewTicket } from '../scrapers/ticket-form-filler';
 import { scrapeRequesterAssets } from '../scrapers/asset-scraper';
 import { createContentMessageHandler } from '../utils/content-message-handler';
@@ -72,6 +74,28 @@ chrome.runtime.onMessage.addListener(
     },
     (errorMessage) => ({
       type: 'REQUESTER_ASSETS_RESULT',
+      success: false,
+      error: errorMessage,
+    })
+  )
+);
+
+// Scrape the requester's name when requested by the manual continue path
+// (sent to whichever profile tab the tech has manually focused)
+chrome.runtime.onMessage.addListener(
+  createContentMessageHandler<GetRequesterProfileInfoMessage, RequesterProfileInfoResultMessage>(
+    'GET_REQUESTER_PROFILE_INFO',
+    () => {
+      const result = scrapeRequesterProfileInfo();
+      return {
+        type: 'REQUESTER_PROFILE_INFO_RESULT',
+        success: result.success,
+        name: result.name,
+        error: result.error,
+      };
+    },
+    (errorMessage) => ({
+      type: 'REQUESTER_PROFILE_INFO_RESULT',
       success: false,
       error: errorMessage,
     })

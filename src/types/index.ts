@@ -8,7 +8,10 @@ export type MessageType =
   | 'AUTOFILL_TICKET_RESULT'
   | 'GET_REQUESTER_ASSETS'
   | 'REQUESTER_ASSETS_RESULT'
+  | 'GET_REQUESTER_PROFILE_INFO'
+  | 'REQUESTER_PROFILE_INFO_RESULT'
   | 'TRIGGER_WORKFLOW'
+  | 'CONTINUE_WITH_MANUAL_REQUESTER'
   | 'PHONE_NUMBER_IDENTIFIED'
   | 'WORKFLOW_UPDATE'
   | 'WORKFLOW_COMPLETE'
@@ -67,8 +70,23 @@ export interface RequesterAssetsResultMessage extends BaseMessage {
   error?: string;
 }
 
+export interface GetRequesterProfileInfoMessage extends BaseMessage {
+  type: 'GET_REQUESTER_PROFILE_INFO';
+}
+
+export interface RequesterProfileInfoResultMessage extends BaseMessage {
+  type: 'REQUESTER_PROFILE_INFO_RESULT';
+  success: boolean;
+  name?: string;
+  error?: string;
+}
+
 export interface TriggerWorkflowMessage extends BaseMessage {
   type: 'TRIGGER_WORKFLOW';
+}
+
+export interface ContinueWithManualRequesterMessage extends BaseMessage {
+  type: 'CONTINUE_WITH_MANUAL_REQUESTER';
 }
 
 export interface PhoneNumberIdentifiedMessage extends BaseMessage {
@@ -102,7 +120,10 @@ export type Message =
   | AutofillTicketResultMessage
   | GetRequesterAssetsMessage
   | RequesterAssetsResultMessage
+  | GetRequesterProfileInfoMessage
+  | RequesterProfileInfoResultMessage
   | TriggerWorkflowMessage
+  | ContinueWithManualRequesterMessage
   | PhoneNumberIdentifiedMessage
   | WorkflowUpdateMessage
   | WorkflowCompleteMessage
@@ -169,9 +190,20 @@ export interface StoredRequester {
   requesterUserId: string;
   phoneNumber: string;
   timestamp: number;
-  source?: 'requesters' | 'tickets'; // Where the requester was found
+  source?: 'requesters' | 'tickets' | 'manual'; // Where the requester was found
   laptopNumber?: string; // Asset tag, set only when exactly one asset was found
   assetTags?: string[]; // All asset tags found on the requester's profile (0, 1, or many)
+}
+
+/**
+ * Persisted across a failed identification so the sidepanel's manual
+ * continue action can resume the same run (same ticket tab, same phone
+ * number) after the tech manually finds the correct requester
+ */
+export interface PendingRun {
+  ticketTabId: number;
+  phoneNumber: string;
+  timestamp: number;
 }
 
 // Error types

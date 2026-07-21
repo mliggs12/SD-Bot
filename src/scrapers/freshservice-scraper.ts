@@ -1,5 +1,5 @@
 import { RequesterData, RequesterInfo } from '../types';
-import { FRESHSERVICE_SELECTORS } from '../utils/config';
+import { FRESHSERVICE_SELECTORS, FRESHSERVICE_PROFILE_SELECTORS } from '../utils/config';
 import { formatErrorWithStack } from '../utils/error-handler';
 
 interface TicketExtractionResult {
@@ -191,6 +191,30 @@ export function scrapeSearchResults(): RequesterData {
     return {
       found: false,
       reason: `Error scraping search results: ${formatErrorWithStack(error, true)}`
+    };
+  }
+}
+
+/**
+ * Scrapes the requester's name from their FreshService profile page. Used by
+ * the manual continue path, where the tech has already opened the correct
+ * requester's profile page and the userId is read from the tab's URL instead
+ */
+export function scrapeRequesterProfileInfo(): { success: boolean; name?: string; error?: string } {
+  try {
+    const nameElement = document.querySelector(FRESHSERVICE_PROFILE_SELECTORS.requesterName);
+    const name = nameElement?.textContent?.trim();
+    if (!name) {
+      return {
+        success: false,
+        error: `Requester name element (${FRESHSERVICE_PROFILE_SELECTORS.requesterName}) not found or empty. Page title: "${document.title}".`,
+      };
+    }
+    return { success: true, name };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Error scraping requester profile info: ${formatErrorWithStack(error, true)}`,
     };
   }
 }

@@ -82,12 +82,42 @@
       background: #eee;
       color: #999;
     }
+    #manual-continue-section {
+      margin-top: 12px;
+      padding: 10px 12px;
+      background: #fff8e1;
+      border: 1px solid #ffca28;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #manual-continue-section p {
+      margin: 0 0 8px 0;
+    }
+    #continue-manual-btn {
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      background: #ffca28;
+      color: #7a5c00;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    #continue-manual-btn:hover {
+      background: #ffc107;
+    }
   </style>
 </head>
 <body>
   <button id="run-workflow">Run workflow</button>
 
   <div id="result"></div>
+
+  <div id="manual-continue-section" style="display: none;">
+    <p>Found the correct requester yourself? Open their FreshService profile page, leave it focused, then:</p>
+    <button id="continue-manual-btn">Continue with active tab</button>
+  </div>
 
   <div id="requester-info">
     <p>Name: <span id="requester-name"></span></p>

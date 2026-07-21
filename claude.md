@@ -1385,7 +1385,17 @@ const element =
 
 ## Version History
 
-**Current Version**: 1.6.7
+**Current Version**: 1.7.0
+
+**Recent Changes (1.7.0)**:
+- Added a manual continue path for when the automated FreshService search can't uniquely identify a requester (zero or multiple matches): the sidepanel now shows a "Continue with active tab" button after those specific errors, letting the tech manually search FreshService, open the correct requester's profile page, leave it focused, and resume the same run (same new-ticket tab and phone number) from there
+- The background workflow persists a `PendingRun` (`ticketTabId`, `phoneNumber`) via `StorageService.setPendingRun`/`getPendingRun`/`clearPendingRun` once the ticket tab is created, so the run can be resumed even if the service worker restarts while the tech searches manually; cleared once a requester is identified (automated or manual)
+- Added `src/scrapers/freshservice-scraper.ts`'s `scrapeRequesterProfileInfo()` (reads the requester's name from `.agent-name` on their profile page), the `GET_REQUESTER_PROFILE_INFO`/`REQUESTER_PROFILE_INFO_RESULT` message types, and `MessageService.getRequesterProfileInfo`
+- New `CONTINUE_WITH_MANUAL_REQUESTER` message and `handleManualContinue()` in the background: reads the userId from the focused tab's URL, the name via the new scraper, reuses the existing `lookupRequesterAssets`/`autofillNewTicket` helpers (no new profile tab is opened — the tech's focused tab *is* the profile tab)
+- `extractUserIdFromProfileUrl` accepts both `/users/{id}` (used when this extension opens the profile tab itself) and `/itil/requesters/{id}` (the path FreshService's address bar actually shows, e.g. after manually navigating there via search) — a focused tab on the latter path was initially rejected as "no requester profile tab focused" until this fix
+- `StoredRequester.source` gained a `'manual'` value to distinguish manually-continued identifications from automated ones
+- Minor cleanup: `handleWorkflow` no longer rethrows the search error after autofill (which previously caused a redundant generic "Extension Error" to overwrite the specific "Requester not uniquely identified"/"Multiple requesters found" message in the sidepanel)
+- New DOM capture: `dom-captures/requester-name.html`
 
 **Recent Changes (1.6.7)**:
 - The workflow no longer auto-runs when the extension icon is clicked — clicking the icon now only opens the side panel. Starting a run always goes through the sidepanel's "Run workflow" button

@@ -1,4 +1,4 @@
-import { StoredRequester, TestModeSettings } from '../types';
+import { StoredRequester, TestModeSettings, PendingRun } from '../types';
 import { STORAGE_KEYS, DEFAULT_TEST_PHONE_NUMBER } from '../utils/config';
 
 /**
@@ -44,6 +44,29 @@ export class StorageService {
    */
   static async setTestModeSettings(settings: TestModeSettings): Promise<void> {
     await chrome.storage.local.set({ [STORAGE_KEYS.testModeSettings]: settings });
+  }
+
+  /**
+   * Store the current run's ticket tab id and phone number, so the manual
+   * continue path can resume the same run after a failed identification
+   */
+  static async setPendingRun(data: PendingRun): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEYS.pendingRun]: data });
+  }
+
+  /**
+   * Get the pending run, if one is in progress
+   */
+  static async getPendingRun(): Promise<PendingRun | null> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.pendingRun);
+    return result[STORAGE_KEYS.pendingRun] || null;
+  }
+
+  /**
+   * Clear the pending run once a workflow reaches a terminal outcome
+   */
+  static async clearPendingRun(): Promise<void> {
+    await chrome.storage.local.remove(STORAGE_KEYS.pendingRun);
   }
 }
 

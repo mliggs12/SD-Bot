@@ -7,7 +7,9 @@ import {
   AutofillTicketMessage,
   AutofillTicketResultMessage,
   GetRequesterAssetsMessage,
-  RequesterAssetsResultMessage
+  RequesterAssetsResultMessage,
+  GetRequesterProfileInfoMessage,
+  RequesterProfileInfoResultMessage
 } from '../types';
 
 /**
@@ -140,6 +142,19 @@ export class MessageService {
       type: 'GET_REQUESTER_ASSETS',
     };
     return this.sendToTab<RequesterAssetsResultMessage>(tabId, request);
+  }
+
+  /**
+   * Request the requester's name from the FreshService content script
+   * @param tabId - The ID of the tab containing the requester's profile page
+   * @returns Promise that resolves with the requester's profile info
+   * @throws Error if the message cannot be sent or if no response is received
+   */
+  static async getRequesterProfileInfo(tabId: number): Promise<RequesterProfileInfoResultMessage> {
+    const request: GetRequesterProfileInfoMessage = {
+      type: 'GET_REQUESTER_PROFILE_INFO',
+    };
+    return this.sendToTab<RequesterProfileInfoResultMessage>(tabId, request);
   }
 
   /**

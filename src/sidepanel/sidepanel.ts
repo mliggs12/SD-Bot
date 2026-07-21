@@ -1,6 +1,7 @@
 import {
   Message,
   TriggerWorkflowMessage,
+  ContinueWithManualRequesterMessage,
   PhoneNumberIdentifiedMessage,
   WorkflowUpdateMessage,
   WorkflowCompleteMessage,
@@ -18,6 +19,11 @@ const runWorkflowButton = document.getElementById('run-workflow') as HTMLButtonE
 const testModeSection = document.getElementById('test-mode-section');
 const testModeToggle = document.getElementById('test-mode-toggle') as HTMLInputElement | null;
 const testPhoneInput = document.getElementById('test-phone') as HTMLInputElement | null;
+const manualContinueSection = document.getElementById('manual-continue-section') as HTMLDivElement | null;
+const continueManualButton = document.getElementById('continue-manual-btn') as HTMLButtonElement | null;
+
+// Errors from a failed automated identification that offer a manual continue
+const MANUAL_CONTINUE_ERRORS = ['Requester not uniquely identified', 'Multiple requesters found'];
 
 /**
  * Initialize the sidepanel
@@ -47,6 +53,9 @@ function init(): void {
 
   if (runWorkflowButton) {
     runWorkflowButton.addEventListener('click', () => triggerWorkflow());
+  }
+  if (continueManualButton) {
+    continueManualButton.addEventListener('click', () => continueWithManualRequester());
   }
 }
 
@@ -180,14 +189,18 @@ function formatLaptopDisplay(laptopNumber: string | undefined, assetTags: string
  */
 function handleWorkflowError(message: WorkflowErrorMessage): void {
   if (!resultDiv) return;
-  
+
   const details = message.details ? `<br><div style="font-size: 11px; margin-top: 5px; color: #666;">${message.details}</div>` : '';
-  
+
   resultDiv.innerHTML = `
     <div class="error">X ${message.error}</div>
     ${details}
   `;
   resultDiv.className = 'error';
+
+  if (manualContinueSection && MANUAL_CONTINUE_ERRORS.includes(message.error)) {
+    manualContinueSection.style.display = 'block';
+  }
 }
 
 /**
@@ -201,6 +214,7 @@ function triggerWorkflow(): void {
   if (requesterNameSpan) requesterNameSpan.textContent = '';
   if (phoneNumberSpan) phoneNumberSpan.textContent = '';
   if (laptopSerialSpan) laptopSerialSpan.textContent = '';
+  if (manualContinueSection) manualContinueSection.style.display = 'none';
 
   resultDiv.textContent = 'Starting workflow...';
   resultDiv.className = '';
@@ -215,6 +229,32 @@ function triggerWorkflow(): void {
   chrome.runtime.sendMessage(message).catch(() => {
     // Ignore errors - workflow will send updates via onMessage if it starts
     // If there's an error, the background script will send a WORKFLOW_ERROR message
+  });
+}
+
+/**
+ * Continue with a manually found requester
+ * Called when the user clicks "Continue with active tab" after the automated
+ * workflow failed to uniquely identify a requester. The tech is expected to
+ * have manually searched FreshService and left the correct requester's
+ * profile page focused before clicking.
+ */
+function continueWithManualRequester(): void {
+  if (!resultDiv) return;
+
+  if (requesterNameSpan) requesterNameSpan.textContent = '';
+  if (laptopSerialSpan) laptopSerialSpan.textContent = '';
+  if (manualContinueSection) manualContinueSection.style.display = 'none';
+
+  resultDiv.textContent = 'Continuing with manually selected requester...';
+  resultDiv.className = '';
+
+  const message: ContinueWithManualRequesterMessage = {
+    type: 'CONTINUE_WITH_MANUAL_REQUESTER',
+  };
+
+  chrome.runtime.sendMessage(message).catch(() => {
+    // Ignore errors - result will arrive via onMessage if it starts
   });
 }
 

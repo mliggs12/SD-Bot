@@ -21,6 +21,7 @@ import { StorageService } from '../services/storage-service';
 import { MessageService } from '../services/message-service';
 import {
   RINGCENTRAL_PATTERN,
+  FRESHSERVICE_BASE_URL,
   FRESHSERVICE_SEARCH_URL,
   FRESHSERVICE_NEW_TICKET_URL,
   FRESHSERVICE_USER_PROFILE_URL,
@@ -75,11 +76,19 @@ chrome.runtime.onMessage.addListener((
         console.error('Workflow error:', error);
         // Error already sent via message
       });
-    
+
     // Return true to indicate async response
     return true;
   }
-  
+
+  if (message.type === 'CONTINUE_WITH_MANUAL_REQUESTER') {
+    handleManualContinue().catch((error) => {
+      console.error('Manual continue error:', error);
+      // Error already sent via message
+    });
+    return true;
+  }
+
   return false;
 });
 
@@ -112,6 +121,11 @@ async function handleWorkflow(): Promise<void> {
     // Always open new ticket tab first; keep a handle on it for autofill
     const ticketTab = await TabManager.createTab(FRESHSERVICE_NEW_TICKET_URL, false);
 
+    // Persisted (rather than kept only as a local variable) so the manual
+    // continue path can resume this same run if the service worker restarts
+    // while the tech is manually searching FreshService
+    await StorageService.setPendingRun({ ticketTabId: ticketTab.id!, phoneNumber, timestamp: Date.now() });
+
     const searchTab = await searchFreshService(phoneNumber);
 
     // Identify the requester, but prep the new ticket even when identification fails
@@ -141,8 +155,15 @@ async function handleWorkflow(): Promise<void> {
     );
 
     if (searchError !== undefined || !requesterData) {
-      throw searchError;
+      // processSearchResults already reported the specific failure to the
+      // sidepanel; leave the pending run persisted so the manual continue
+      // path can pick up this ticket tab/phone number once the tech finds
+      // the correct requester
+      return;
     }
+
+    // A requester was identified, so the manual continue path no longer applies
+    await StorageService.clearPendingRun();
 
     if (autofillError) {
       sendWorkflowError(
@@ -272,6 +293,106 @@ async function processSearchResults(
   );
 
   throw new Error(`Requester not uniquely identified: ${reason}`);
+}
+
+/**
+ * Manual continue path: resumes a run whose automated identification failed.
+ * The tech has manually searched FreshService and left the correct
+ * requester's profile page focused; this reads their name/userId from that
+ * tab, looks up assets, and autofills the ticket from the original run
+ * @throws Nothing - all failures are reported via sendWorkflowError
+ */
+async function handleManualContinue(): Promise<void> {
+  try {
+    const pendingRun = await StorageService.getPendingRun();
+    if (!pendingRun) {
+      sendWorkflowError(
+        'No pending workflow',
+        'Run the workflow first, then use Continue if it fails to identify a requester.'
+      );
+      return;
+    }
+
+    const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const requesterUserId = extractUserIdFromProfileUrl(activeTab?.url);
+    if (!activeTab?.id || !requesterUserId) {
+      sendWorkflowError(
+        'No requester profile tab focused',
+        `Open the correct requester's FreshService profile page, leave it as the focused tab, then click Continue again.`
+      );
+      return;
+    }
+    const profileTabId = activeTab.id;
+
+    sendWorkflowUpdate('Reading requester profile...');
+    const nameResult = await MessageService.getRequesterProfileInfo(profileTabId);
+    const requesterName = nameResult.success && nameResult.name ? nameResult.name : '';
+
+    let requesterData: StoredRequester = {
+      requesterName,
+      requesterUserId,
+      phoneNumber: pendingRun.phoneNumber,
+      timestamp: Date.now(),
+      source: 'manual',
+    };
+    await StorageService.setCurrentRequester(requesterData);
+
+    const assetLookup = await lookupRequesterAssets(profileTabId, requesterName || '(unknown)');
+    requesterData = { ...requesterData, ...assetLookup };
+
+    let ticketTabExists = true;
+    try {
+      await chrome.tabs.get(pendingRun.ticketTabId);
+    } catch {
+      ticketTabExists = false;
+    }
+
+    await StorageService.clearPendingRun();
+
+    if (!ticketTabExists) {
+      sendWorkflowError('New ticket tab was closed', 'Create the ticket manually using the details below.');
+      sendWorkflowComplete(requesterData);
+      return;
+    }
+
+    const autofillError = await autofillNewTicket(
+      pendingRun.ticketTabId,
+      requesterData.requesterName,
+      pendingRun.phoneNumber,
+      requesterData.laptopNumber ?? ''
+    );
+
+    if (autofillError) {
+      sendWorkflowError(
+        'Ticket autofill failed',
+        `${autofillError} Fill the ticket description manually.`
+      );
+      return;
+    }
+
+    sendWorkflowComplete(requesterData);
+  } catch (error) {
+    sendWorkflowError('Extension Error', formatErrorWithStack(error, true));
+  }
+}
+
+/**
+ * Extracts the requester userId from a FreshService profile tab's URL,
+ * validating the origin. FreshService profile pages are reachable at two
+ * path shapes that both resolve to the same page: /users/{id} (used when
+ * this extension opens the tab itself, via FRESHSERVICE_USER_PROFILE_URL)
+ * and /itil/requesters/{id} (what the tab's address bar actually shows,
+ * e.g. after manually navigating there via search)
+ */
+function extractUserIdFromProfileUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    if (parsed.origin !== new URL(FRESHSERVICE_BASE_URL).origin) return undefined;
+    return parsed.pathname.match(/^\/(?:users|itil\/requesters)\/(\d+)/)?.[1];
+  } catch {
+    return undefined;
+  }
 }
 
 /**
