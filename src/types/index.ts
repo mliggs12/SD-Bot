@@ -12,6 +12,7 @@ export type MessageType =
   | 'REQUESTER_PROFILE_INFO_RESULT'
   | 'TRIGGER_WORKFLOW'
   | 'CONTINUE_WITH_MANUAL_REQUESTER'
+  | 'SELECT_LAPTOP'
   | 'PHONE_NUMBER_IDENTIFIED'
   | 'WORKFLOW_UPDATE'
   | 'WORKFLOW_COMPLETE'
@@ -93,6 +94,16 @@ export interface ContinueWithManualRequesterMessage extends BaseMessage {
   type: 'CONTINUE_WITH_MANUAL_REQUESTER';
 }
 
+/**
+ * Sent from the sidepanel when the tech picks the correct laptop from a
+ * "multiple assets found" list; the background re-autofills the ticket's
+ * Laptop# line with this tag
+ */
+export interface SelectLaptopMessage extends BaseMessage {
+  type: 'SELECT_LAPTOP';
+  assetTag: string;
+}
+
 export interface PhoneNumberIdentifiedMessage extends BaseMessage {
   type: 'PHONE_NUMBER_IDENTIFIED';
   phoneNumber: string;
@@ -128,6 +139,7 @@ export type Message =
   | RequesterProfileInfoResultMessage
   | TriggerWorkflowMessage
   | ContinueWithManualRequesterMessage
+  | SelectLaptopMessage
   | PhoneNumberIdentifiedMessage
   | WorkflowUpdateMessage
   | WorkflowCompleteMessage
@@ -203,6 +215,7 @@ export interface StoredRequester {
   assetTags?: string[]; // All asset tags found on the requester's profile (0, 1, or many)
   requesterAutoSelected?: boolean; // True when the ticket's Requester field was auto-selected
   requesterSelectionNote?: string; // Reason it was left blank, when requesterAutoSelected is false
+  ticketTabId?: number; // The new ticket tab opened for this run, so a later laptop selection can re-autofill it
 }
 
 /**

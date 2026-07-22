@@ -89,6 +89,14 @@ chrome.runtime.onMessage.addListener((
     return true;
   }
 
+  if (message.type === 'SELECT_LAPTOP') {
+    handleSelectLaptop(message.assetTag).catch((error) => {
+      console.error('Select laptop error:', error);
+      // Error already sent via message
+    });
+    return true;
+  }
+
   return false;
 });
 
@@ -148,6 +156,7 @@ async function handleWorkflow(): Promise<void> {
     // profile tab is opened (and awaited) here rather than at the end so its
     // assigned laptop, if any, can be included in the single autofill pass below
     if (requesterData) {
+      requesterData = { ...requesterData, ticketTabId: ticketTab.id };
       const profileTab = await openRequesterProfileTab(requesterData);
       const assetLookup = await lookupRequesterAssets(profileTab.id!, requesterData.requesterName);
       requesterData = { ...requesterData, ...assetLookup };
@@ -185,6 +194,11 @@ async function handleWorkflow(): Promise<void> {
       requesterAutoSelected: autofillOutcome.requesterAutoSelected,
       requesterSelectionNote: autofillOutcome.requesterSelectionNote,
     };
+    // Re-persist the enriched data (assets, ticketTabId, requester selection
+    // outcome) — the earlier setCurrentRequester in processSearchResults only
+    // had the initial name/userId/phone. A later laptop selection (see
+    // handleSelectLaptop) needs this full record to re-autofill the ticket.
+    await StorageService.setCurrentRequester(requesterData);
     sendWorkflowComplete(requesterData);
   } catch (error) {
     const errorMessage = formatErrorWithStack(error, true);
@@ -346,6 +360,7 @@ async function handleManualContinue(): Promise<void> {
       phoneNumber: pendingRun.phoneNumber,
       timestamp: Date.now(),
       source: 'manual',
+      ticketTabId: pendingRun.ticketTabId,
     };
     await StorageService.setCurrentRequester(requesterData);
 
@@ -387,7 +402,61 @@ async function handleManualContinue(): Promise<void> {
       requesterAutoSelected: autofillOutcome.requesterAutoSelected,
       requesterSelectionNote: autofillOutcome.requesterSelectionNote,
     };
+    await StorageService.setCurrentRequester(requesterData);
     sendWorkflowComplete(requesterData);
+  } catch (error) {
+    sendWorkflowError('Extension Error', formatErrorWithStack(error, true));
+  }
+}
+
+/**
+ * Handles the tech picking the correct laptop from a "multiple assets found"
+ * list in the sidepanel: re-autofills the same ticket's Laptop# line with the
+ * chosen asset tag. Safe to run against an already-autofilled ticket — see
+ * the INVARIANT note in ticket-form-filler.ts's autofillNewTicket(), which
+ * this reuses unchanged; applyTemplate()/selectRequester()/selectAgent() are
+ * all idempotent, so only the Laptop# value actually changes
+ * @throws Nothing - all failures are reported via sendWorkflowError
+ */
+async function handleSelectLaptop(assetTag: string): Promise<void> {
+  try {
+    const current = await StorageService.getCurrentRequester();
+    if (!current || current.ticketTabId === undefined) {
+      sendWorkflowError('No active ticket to update', 'Run the workflow first, then select a laptop.');
+      return;
+    }
+
+    try {
+      await chrome.tabs.get(current.ticketTabId);
+    } catch {
+      sendWorkflowError('New ticket tab was closed', `Set Laptop# to ${assetTag} manually.`);
+      return;
+    }
+
+    sendWorkflowUpdate(`Setting Laptop# to ${assetTag}...`);
+    const autofillOutcome = await autofillNewTicket(
+      current.ticketTabId,
+      current.requesterName,
+      current.phoneNumber,
+      assetTag
+    );
+
+    if (!autofillOutcome.success) {
+      sendWorkflowError(
+        'Ticket autofill failed',
+        `${autofillOutcome.error} Set Laptop# to ${assetTag} manually.`
+      );
+      return;
+    }
+
+    const updated: StoredRequester = {
+      ...current,
+      laptopNumber: assetTag,
+      requesterAutoSelected: autofillOutcome.requesterAutoSelected,
+      requesterSelectionNote: autofillOutcome.requesterSelectionNote,
+    };
+    await StorageService.setCurrentRequester(updated);
+    sendWorkflowComplete(updated);
   } catch (error) {
     sendWorkflowError('Extension Error', formatErrorWithStack(error, true));
   }

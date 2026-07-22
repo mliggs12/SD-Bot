@@ -196,6 +196,23 @@ function trimToKeepLabels(editor: HTMLElement): void {
 }
 
 /**
+ * Removes trailing whitespace-only text nodes (plain spaces or &nbsp;) from
+ * the end of an element's children. FreshService's template markup is
+ * inconsistent about where a label's trailing space lives: TM Name's is a
+ * paragraph-level sibling (`<u>TM Name:</u>&nbsp;`), while Ph#/Laptop#'s is
+ * nested *inside* the same wrapper as the label
+ * (`<span><u>Ph#:</u>&nbsp;</span>`). The paragraph-level child-count trim in
+ * setLineValues only catches the former shape, so without this, Ph#/Laptop#'s
+ * inner &nbsp; survives and combines with the newly appended value's leading
+ * space into a double space
+ */
+function stripTrailingWhitespace(element: HTMLElement): void {
+  while (element.lastChild?.nodeType === Node.TEXT_NODE && !cleanText(element.lastChild.textContent)) {
+    element.removeChild(element.lastChild);
+  }
+}
+
+/**
  * Sets each keep-label line's value in place, replacing whatever value (if
  * any) was set on a previous pass rather than appending to it. Safe to call
  * repeatedly — e.g. once with partial data (Ph# known, TM Name still blank),
@@ -217,6 +234,13 @@ function setLineValues(editor: HTMLElement, values: Readonly<Record<string, stri
     // previous pass appended, so this replaces rather than duplicates it
     while (paragraph.childNodes.length > 1) {
       paragraph.removeChild(paragraph.lastChild as ChildNode);
+    }
+    // Some labels (Ph#, Laptop#) nest their trailing space inside the same
+    // wrapper as the label itself, rather than as a paragraph-level sibling,
+    // so the child-count trim above doesn't remove it; strip it here too so
+    // exactly one space ends up separating the label from the value below
+    if (paragraph.firstChild?.nodeType === Node.ELEMENT_NODE) {
+      stripTrailingWhitespace(paragraph.firstChild as HTMLElement);
     }
 
     const value = values[label];

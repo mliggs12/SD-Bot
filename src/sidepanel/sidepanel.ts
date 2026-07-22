@@ -2,6 +2,7 @@ import {
   Message,
   TriggerWorkflowMessage,
   ContinueWithManualRequesterMessage,
+  SelectLaptopMessage,
   PhoneNumberIdentifiedMessage,
   WorkflowUpdateMessage,
   WorkflowCompleteMessage,
@@ -22,6 +23,8 @@ const testModeToggle = document.getElementById('test-mode-toggle') as HTMLInputE
 const testPhoneInput = document.getElementById('test-phone') as HTMLInputElement | null;
 const manualContinueSection = document.getElementById('manual-continue-section') as HTMLDivElement | null;
 const continueManualButton = document.getElementById('continue-manual-btn') as HTMLButtonElement | null;
+const laptopSelectSection = document.getElementById('laptop-select-section') as HTMLDivElement | null;
+const laptopSelectButtons = document.getElementById('laptop-select-buttons') as HTMLDivElement | null;
 
 // Errors from a failed automated identification that offer a manual continue
 const MANUAL_CONTINUE_ERRORS = ['Requester not uniquely identified', 'Multiple requesters found'];
@@ -45,6 +48,7 @@ function init(): void {
   if (requesterNameSpan) requesterNameSpan.textContent = '';
   if (laptopSerialSpan) laptopSerialSpan.textContent = '';
   updateCopyButtonVisibility();
+  hideLaptopSelectUi();
 
   // Show version + build stamp so a stale dist/ build is immediately visible
   if (buildInfoDiv) {
@@ -66,11 +70,13 @@ function init(): void {
 
 /**
  * Returns the laptop number text to copy, or null if nothing worth copying
- * is currently displayed (blank or "None found")
+ * is currently displayed: blank, "None found", or the "Multiple found" list
+ * shown before the tech picks one via the laptop selection buttons
  */
 function getCopyableLaptopText(): string | null {
   const text = laptopSerialSpan?.textContent?.trim();
-  return text && text !== 'None found' ? text : null;
+  if (!text || text === 'None found' || text.startsWith('Multiple found')) return null;
+  return text;
 }
 
 /**
@@ -201,15 +207,17 @@ function handleWorkflowComplete(message: WorkflowCompleteMessage): void {
   if (phoneNumberSpan) phoneNumberSpan.textContent = phoneNumber;
   if (laptopSerialSpan) laptopSerialSpan.textContent = formatLaptopDisplay(laptopNumber, assetTags);
   updateCopyButtonVisibility();
+  updateLaptopSelectUi(laptopNumber, assetTags);
 
   const sourceLabel = source === 'tickets' ? ' (matched from tickets)' : '';
   resultDiv.style.fontWeight = 'bold';
 
-  // Multiple assets found, or the Requester field couldn't be uniquely
-  // auto-selected — either leaves something for the tech to finish manually
+  // Multiple assets found (and not yet resolved by a manual pick), or the
+  // Requester field couldn't be uniquely auto-selected — either leaves
+  // something for the tech to finish manually
   const warnings: string[] = [];
-  if (assetTags && assetTags.length > 1) {
-    warnings.push('Multiple laptops found — confirm with caller and fill Laptop# manually.');
+  if (!laptopNumber && assetTags && assetTags.length > 1) {
+    warnings.push('Multiple laptops found — select the correct one below.');
   }
   if (requesterName && requesterAutoSelected === false) {
     warnings.push(`Requester field left blank — select "${requesterName}" manually.`);
@@ -227,15 +235,95 @@ function handleWorkflowComplete(message: WorkflowCompleteMessage): void {
 }
 
 /**
- * Formats the sidepanel's Laptop # display: the asset tag when exactly one
- * was found, a list to prompt manual disambiguation when there were several,
- * or a "none found" note otherwise
+ * Formats the sidepanel's Laptop # display: the asset tag once one is known
+ * (whether it was the sole match found, or picked via the multi-laptop
+ * selection buttons), a list to prompt disambiguation while several are
+ * still unresolved, or a "none found" note otherwise
  */
 function formatLaptopDisplay(laptopNumber: string | undefined, assetTags: string[] | undefined): string {
+  if (laptopNumber) {
+    return laptopNumber;
+  }
   if (assetTags && assetTags.length > 1) {
     return `Multiple found (ask caller): ${assetTags.join(', ')}`;
   }
-  return laptopNumber || 'None found';
+  return 'None found';
+}
+
+/**
+ * Shows one button per candidate asset tag when multiple laptops were found
+ * and none has been picked yet; hides the section otherwise (resolved, or
+ * never ambiguous to begin with)
+ */
+function updateLaptopSelectUi(laptopNumber: string | undefined, assetTags: string[] | undefined): void {
+  if (!laptopSelectSection || !laptopSelectButtons) return;
+
+  const needsSelection = !laptopNumber && !!assetTags && assetTags.length > 1;
+  if (!needsSelection) {
+    hideLaptopSelectUi();
+    return;
+  }
+
+  laptopSelectSection.style.display = 'block';
+  laptopSelectButtons.innerHTML = '';
+  assetTags.forEach((tag) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = tag;
+    button.className = 'laptop-select-btn';
+    button.addEventListener('click', () => selectLaptop(tag, button));
+    laptopSelectButtons.appendChild(button);
+  });
+}
+
+/**
+ * Hides the laptop selection buttons and clears them, so a stale list from a
+ * previous run never lingers into the next
+ */
+function hideLaptopSelectUi(): void {
+  if (laptopSelectSection) laptopSelectSection.style.display = 'none';
+  if (laptopSelectButtons) laptopSelectButtons.innerHTML = '';
+}
+
+/**
+ * Called when the tech clicks one of the multi-laptop selection buttons.
+ * Disables the buttons and tells the background to re-autofill the ticket's
+ * Laptop# line with the chosen tag; the result arrives via the normal
+ * WORKFLOW_UPDATE/WORKFLOW_COMPLETE/WORKFLOW_ERROR messages
+ */
+function selectLaptop(assetTag: string, button: HTMLButtonElement): void {
+  if (laptopSelectButtons) {
+    Array.from(laptopSelectButtons.querySelectorAll('button')).forEach((btn) => {
+      (btn as HTMLButtonElement).disabled = true;
+    });
+  }
+  button.dataset.originalLabel = assetTag;
+  button.textContent = `Setting ${assetTag}...`;
+
+  const message: SelectLaptopMessage = {
+    type: 'SELECT_LAPTOP',
+    assetTag,
+  };
+
+  chrome.runtime.sendMessage(message).catch(() => {
+    // Ignore - result/errors arrive via onMessage
+  });
+}
+
+/**
+ * Re-enables the laptop selection buttons and restores their labels after a
+ * failed selection attempt (e.g. autofill failure), so the tech can retry a
+ * different laptop instead of being stuck with disabled "Setting..." buttons
+ */
+function resetLaptopSelectButtons(): void {
+  if (!laptopSelectButtons) return;
+  Array.from(laptopSelectButtons.querySelectorAll('button')).forEach((btn) => {
+    const button = btn as HTMLButtonElement;
+    button.disabled = false;
+    if (button.dataset.originalLabel) {
+      button.textContent = button.dataset.originalLabel;
+    }
+  });
 }
 
 /**
@@ -255,6 +343,8 @@ function handleWorkflowError(message: WorkflowErrorMessage): void {
   if (manualContinueSection && MANUAL_CONTINUE_ERRORS.includes(message.error)) {
     manualContinueSection.style.display = 'block';
   }
+
+  resetLaptopSelectButtons();
 }
 
 /**
@@ -269,6 +359,7 @@ function triggerWorkflow(): void {
   if (phoneNumberSpan) phoneNumberSpan.textContent = '';
   if (laptopSerialSpan) laptopSerialSpan.textContent = '';
   updateCopyButtonVisibility();
+  hideLaptopSelectUi();
   if (manualContinueSection) manualContinueSection.style.display = 'none';
 
   resultDiv.textContent = 'Starting workflow...';
@@ -300,6 +391,7 @@ function continueWithManualRequester(): void {
   if (requesterNameSpan) requesterNameSpan.textContent = '';
   if (laptopSerialSpan) laptopSerialSpan.textContent = '';
   updateCopyButtonVisibility();
+  hideLaptopSelectUi();
   if (manualContinueSection) manualContinueSection.style.display = 'none';
 
   resultDiv.textContent = 'Continuing with manually selected requester...';

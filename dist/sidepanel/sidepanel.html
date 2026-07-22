@@ -124,6 +124,39 @@
       background: #d4edda;
       border-color: #28a745;
     }
+    #laptop-select-section {
+      margin-top: 12px;
+      padding: 10px 12px;
+      background: #fff8e1;
+      border: 1px solid #ffca28;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #laptop-select-section p {
+      margin: 0 0 8px 0;
+    }
+    #laptop-select-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .laptop-select-btn {
+      padding: 6px 10px;
+      border: 1px solid #ffca28;
+      border-radius: 4px;
+      background: #fff;
+      color: #7a5c00;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .laptop-select-btn:hover:not(:disabled) {
+      background: #fff3cd;
+    }
+    .laptop-select-btn:disabled {
+      cursor: default;
+      opacity: 0.7;
+    }
   </style>
 </head>
 <body>
@@ -140,6 +173,11 @@
     <p>Name: <span id="requester-name"></span></p>
     <p>Phone: <span id="phone-number"></span></p>
     <p>Laptop #: <span id="laptop-serial"></span><button id="copy-laptop-btn" type="button" title="Copy laptop number">Copy</button></p>
+  </div>
+
+  <div id="laptop-select-section" style="display: none;">
+    <p>Multiple laptops found — select the correct one:</p>
+    <div id="laptop-select-buttons"></div>
   </div>
 
   <div id="test-mode-section">
